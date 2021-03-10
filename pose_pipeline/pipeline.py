@@ -11,6 +11,7 @@ dj.config['stores'] = {
 
 schema = dj.schema('pose_pipeline')
 
+
 @schema
 class VideoSession(dj.Manual):
     definition = '''
@@ -19,6 +20,7 @@ class VideoSession(dj.Manual):
     date : date
     irb  : varchar(50)
     '''
+
 
 @schema
 class Video(dj.Manual):
@@ -42,25 +44,52 @@ class Video(dj.Manual):
             d.update({'session_id': session_id})
         return d
 
+
+def get_timestamps(d):
+    import cv2
+    from datetime import timedelta
+
+    cap = cv2.VideoCapture(d['video'])
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    times = [d['start_time'] + timedelta(0, i / fps) for i in range(frames)]
+    return times
+
+
 @schema
 class OpenPose(dj.Computed):
     definition = '''
     -> Video
     ---
-    keypoints : longblob
+    keypoints  : longblob
+    timestamps : longblob
+    output_video      : attach@localattach    # datajoint managed video file
     '''
 
     def make(self, key):
-
-        from PosePipeline.wrappers.openpose import parse_video
+        import tempfile
+        from pose_pipeline.wrappers.openpose import parse_video, write_video
 
         d = (Video & key).fetch1()
 
-        res = parse_video(d['video'])
+        res = parse_video(d['video'], keypoints_only=False)
 
+        f = tempfile.NamedTemporaryFile('wb', suffix='.mp4')
+        write_video(f.name, res)
+
+        # only write keypoints to this entry
+        res = [r['keypoints'] for r in res]
+
+        key['output_video'] = f.name
         key['keypoints'] = res
+        key['timestamps'] = get_timestamps(d)
 
         self.insert1(key)
+
+        # remove the downloaded video to avoid clutter
+        os.remove(d['video'])
+
 
 @schema
 class CenterHMR(dj.Computed):
