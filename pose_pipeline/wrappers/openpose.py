@@ -61,7 +61,7 @@ openpose_joints = {
 class OpenposeParser:
     
     def __init__(self, openpose_model_path=OPENPOSE_MODEL_DIR, 
-                 max_people=1, render=True, 
+                 max_people=3, render=True, 
                  results_path=None, hand=False, face=False):
         params = {'model_folder': openpose_model_path,
                   'number_people_max': max_people}
@@ -104,6 +104,9 @@ class OpenposeParser:
             results['hand_keypoints'] = datum.handKeypoints
         if self.face:
             results['face_keypoints'] = datum.faceKeypoints
+
+        results['pose_ids'] = datum.poseIds;
+        results['pose_scores'] = datum.poseScores;
             
         return results
     
@@ -112,10 +115,19 @@ class OpenposeParser:
         del self.opWrapper
         
         
-def parse_video(video_file, keypoints_only=True):
+def parse_video(video_file, keypoints_only=True, outfile=None):
     
     op = OpenposeParser()
     results = []
+
+    cap = cv2.VideoCapture(video_file)
+    cont, frame = cap.read()
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+
+    if outfile is not None:
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        outfile = cv2.VideoWriter(outfile, fourcc, fps, (frame.shape[1], frame.shape[0])) 
     
     if keypoints_only:
         def _add(res):
@@ -125,10 +137,9 @@ def parse_video(video_file, keypoints_only=True):
                 results.append(res['keypoints'])
     else:
         def _add(res):
+            if outfile is not None:
+                outfile.write(res.pop('im'))
             results.append(res)
-
-    cap = cv2.VideoCapture(video_file)
-    cont, frame = cap.read()
 
     while cont and frame is not None:
         _add(op.process_frame(frame))
@@ -137,6 +148,10 @@ def parse_video(video_file, keypoints_only=True):
     op.stop()
     del op
     
+    cap.release()
+    if outfile is not None:
+        outfile.release()
+
     return results
 
 
@@ -154,7 +169,7 @@ def write_video(out_file, results, fps=30):
 
     for i in tqdm(range(len(results))):
         im = results[i]['im']
-        im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
+        #im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
         out.write(im)
 
     out.release()

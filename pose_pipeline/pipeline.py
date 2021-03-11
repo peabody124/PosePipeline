@@ -62,8 +62,10 @@ class OpenPose(dj.Computed):
     definition = '''
     -> Video
     ---
-    keypoints  : longblob
-    timestamps : longblob
+    keypoints         : longblob
+    pose_ids          : longblob
+    pose_scores       : longblob
+    timestamps        : longblob
     output_video      : attach@localattach    # datajoint managed video file
     '''
 
@@ -73,22 +75,20 @@ class OpenPose(dj.Computed):
 
         d = (Video & key).fetch1()
 
-        res = parse_video(d['video'], keypoints_only=False)
+        _, fname = tempfile.mkstemp(suffix='.mp4') 
+        res = parse_video(d['video'], keypoints_only=False, outfile=fname)
 
-        f = tempfile.NamedTemporaryFile('wb', suffix='.mp4')
-        write_video(f.name, res)
-
-        # only write keypoints to this entry
-        res = [r['keypoints'] for r in res]
-
-        key['output_video'] = f.name
-        key['keypoints'] = res
+        key['keypoints'] = [r['keypoints'] for r in res]
+        key['pose_ids'] = [r['pose_ids'] for r in res]
+        key['pose_scores'] = [r['pose_scores'] for r in res]
         key['timestamps'] = get_timestamps(d)
+        key['output_video'] = fname
 
         self.insert1(key)
 
         # remove the downloaded video to avoid clutter
         os.remove(d['video'])
+        os.remove(fname)
 
 
 @schema
