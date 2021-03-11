@@ -59,6 +59,35 @@ def get_timestamps(d):
 
 
 @schema
+class TrackingBbox(dj.Computed):
+    definition = '''
+    -> Video
+    ---
+    tracks            : longblob
+    timestamps        : longblob
+    output_video      : attach@localattach    # datajoint managed video file
+    '''
+
+    def make(self, key):
+        from pose_pipeline.deep_sort_yolov4.parser import tracking_bounding_boxes
+
+        d = (Video & key).fetch1()
+
+        _, fname = tempfile.mkstemp(suffix='.mp4')
+        tracks = tracking_bounding_boxes(d['video'], fname)
+
+        key['tracks'] = tracks
+        key['timestamps'] = get_timestamps(d)
+        key['output_video'] = fname
+
+        self.insert1(key)
+
+        # remove the downloaded video to avoid clutter
+        os.remove(d['video'])
+        os.remove(fname)
+
+
+@schema
 class OpenPose(dj.Computed):
     definition = '''
     -> Video
@@ -71,7 +100,7 @@ class OpenPose(dj.Computed):
     '''
 
     def make(self, key):
-        from pose_pipeline.wrappers.openpose import parse_video, write_video
+        from pose_pipeline.wrappers.openpose import parse_video
 
         d = (Video & key).fetch1()
 

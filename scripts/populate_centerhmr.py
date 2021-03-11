@@ -29,4 +29,4 @@ centerhmr_python_path = os.path.join(home, 'projects/pose/CenterHMR/src')
 sys.path.append(centerhmr_python_path)
 sys.path.append(os.path.join(centerhmr_python_path, 'core'))
 
-CenterHMR.populate(reserve_jobs=True)
+CenterHMR.populate()
