@@ -4,7 +4,7 @@ import sys
 home = os.path.expanduser("~")
 
 
-def parse_video(video_path, centerhmr_python_path=os.path.join(home, 'projects/pose/CenterHMR/src')):
+def parse_video(video_path, output_video_path, centerhmr_python_path=os.path.join(home, 'projects/pose/CenterHMR/src')):
     sys.path.append(centerhmr_python_path)
     sys.path.append(os.path.join(centerhmr_python_path, 'core'))
 
@@ -12,7 +12,7 @@ def parse_video(video_path, centerhmr_python_path=os.path.join(home, 'projects/p
             '--gmodel-path=' + os.path.join(centerhmr_python_path, '../trained_models/pw3d_81.8_58.6.pkl'),
             '--configs_yml=' + os.path.join(centerhmr_python_path, 'configs/basic_test_video.yml')]
 
-    from core.test import Demo
-    centerhmr_parser = Demo()
+    from core.process_video import Parser
+    centerhmr_parser = Parser()
 
-    return centerhmr_parser.process_video(video_path)
+    return centerhmr_parser.process_video(video_path, output_video_path)

@@ -1,5 +1,6 @@
 
 import os
+import tempfile
 import datajoint as dj
 
 dj.config['stores'] = {
@@ -70,12 +71,11 @@ class OpenPose(dj.Computed):
     '''
 
     def make(self, key):
-        import tempfile
         from pose_pipeline.wrappers.openpose import parse_video, write_video
 
         d = (Video & key).fetch1()
 
-        _, fname = tempfile.mkstemp(suffix='.mp4') 
+        _, fname = tempfile.mkstemp(suffix='.mp4')
         res = parse_video(d['video'], keypoints_only=False, outfile=fname)
 
         key['keypoints'] = [r['keypoints'] for r in res]
@@ -96,26 +96,31 @@ class CenterHMR(dj.Computed):
     definition = '''
     -> Video
     ---
-    results : longblob
+    results           : longblob
+    timestamps        : longblob
     output_video      : attach@localattach    # datajoint managed video file
     '''
 
     def make(self, key):
 
-        from PosePipeline.wrappers.centerhmr import parse_video
+        from pose_pipeline.wrappers.centerhmr import parse_video
 
         video = (Video & key).fetch1()
         
-        res = parse_video(video['video'])
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+
+        res = parse_video(video['video'], out_file_name)
 
         # don't store verticies or images
         keys_to_keep = ['params',  'pj2d', 'j3d', 'j3d_smpl24', 'j3d_spin24', 'j3d_op25']
         res = [{k: v for k, v in r.items() if k in keys_to_keep} for r in res]
         key['results'] = res
-        
-        outfile = os.path.splitext(video['video'])
-        key['output_video'] = outfile[0] + '_results' + outfile[1]
+        key['timestamps'] = get_timestamps(video)
+        key['output_video'] = out_file_name
 
         self.insert1(key)
+
+        os.remove(video['video'])
+        os.remove(out_file_name)
 
 
