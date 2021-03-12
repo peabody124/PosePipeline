@@ -14,6 +14,23 @@ dj.config['stores'] = {
 
 schema = dj.schema('pose_pipeline')
 
+# TODO 1: Implement pose warper based on bounding box analysis.
+
+# TODO 2: Remove interim videos from primary analyses. When possible, they should simply
+# be computed on the fly to save storage space (and less things that need to be kept
+# secure). When too slow, they ideally _still_ be split off as a separate class that
+# can be populated and deleted based on need. Finally, when that would require too
+# much manual rework of the upstream code, then still store as separate objects that
+# can ultimately be deleted.
+
+# TODO 3: refactor timestamps out of all the classes and just compute it once. breaks joins
+# and it is easy to get when needed. We will use the frame index as the primary thing for
+# this pipeline, although timestamps obviously become relevant with downstream analyses.
+
+# TODO 4: implement code that blurs all faces and apply that to all interim analysis videos
+# by default. As a step towards this, should also refactor video writer into a general
+# utility function. May want to precompute a face-blurred image and store that for subsequent
+# visualizations, depending on the ultimate speed. This ties into TODO 2.
 
 @schema
 class VideoSession(dj.Manual):
@@ -73,6 +90,7 @@ class TrackingBbox(dj.Computed):
     def make(self, key):
         from pose_pipeline.deep_sort_yolov4.parser import tracking_bounding_boxes
 
+        print(f"Population {key['filename']}")
         d = (Video & key).fetch1()
 
         _, fname = tempfile.mkstemp(suffix='.mp4')
@@ -90,10 +108,18 @@ class TrackingBbox(dj.Computed):
 
 
 @schema
+class Subject(dj.Manual):
+    definition = '''
+    subject_id        : varchar(50)
+    '''
+    # TODO: might want to add more information. Should IRB be here instead of VideoSession?
+
+
+@schema
 class PersonBboxValid(dj.Manual):
     definition = '''
     -> TrackingBbox
-    subject_id        : varchar(50)
+    -> Subject
     ---
     keep_tracks       : longblob
     '''
@@ -226,7 +252,7 @@ class OpenPosePerson(dj.Computed):
             
             empty_keypoints = np.zeros((num_keypoints, 3))
             
-            if len(keypoints_list) == 0:
+            if keypoints_list is None or len(keypoints_list) == 0:
                 return empty_keypoints, None
             
             bbox = np.reshape(bbox, (1, 4))
@@ -275,7 +301,9 @@ class OpenPosePerson(dj.Computed):
                 for i in range(keypoints.shape[1]):
                     if keypoints[idx, i, -1] > thresh:
                         cv2.circle(frame, (int(keypoints[idx, i, 0]), int(keypoints[idx, i, 1])), 15,
-                                (255, 255, 255), -1)
+                                (0, 0, 255), -1)
+                        cv2.circle(frame, (int(keypoints[idx, i, 0]), int(keypoints[idx, i, 1])), 5,
+                                (0, 0, 0), -1)
             
                 return cv2.resize(frame, dsize=dsize, interpolation=cv2.INTER_CUBIC)
 
