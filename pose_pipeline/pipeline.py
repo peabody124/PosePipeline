@@ -377,3 +377,41 @@ class PoseWarperPerson(dj.Computed):
         self.insert1(key)
 
         os.remove(video)
+
+@schema
+class PoseWarperPersonVideo(dj.Computed):
+    definition = '''
+    -> PoseWarperPerson
+    ----
+    output_video      : attach@localattach    # datajoint managed video file
+    '''
+
+    def make(self, key):
+        out_file_name = self.make_video(key)
+        key['output_video'] = out_file_name
+        self.insert1(key)
+    
+    @staticmethod
+    def make_video(key, downsample=4):
+        """ Create an overlay video """
+
+        from pose_pipeline.visualization import video_overlay
+
+        video = (Video & key).fetch1('video')
+        keypoints = (PoseWarperPerson & key).fetch1('keypoints')
+
+        def overlay(image, idx, radius=10):
+            image = image.copy()
+            for i in range(keypoints.shape[1]):
+                if keypoints[idx, i, -1] > 0.1:
+                    cv2.circle(image, (int(keypoints[idx, i, 0]), int(keypoints[idx, i, 1])), radius, (0, 0, 0), -1)
+                    cv2.circle(image, (int(keypoints[idx, i, 0]), int(keypoints[idx, i, 1])), radius-2, (255, 255, 255), -1)
+            return image
+
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        video_overlay(video, out_file_name, overlay, downsample=downsample)
+
+        os.remove(video)
+
+        return out_file_name
+
