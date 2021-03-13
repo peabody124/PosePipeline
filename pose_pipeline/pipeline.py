@@ -355,3 +355,25 @@ class CenterHMRPerson(dj.Computed):
         key['centerhmr_ids'] = np.asarray(centerhmr_ids)
 
         self.insert1(key)
+
+
+@schema
+class PoseWarperPerson(dj.Computed):
+    definition = '''
+    -> PersonBbox
+    ---
+    keypoints        : longblob
+    '''
+
+    def make(self, key):
+
+        from pose_pipeline.wrappers.posewarper import posewarper_track
+
+        video = (Video & key).fetch1('video')
+        bbox, present = (PersonBbox & key).fetch1('bbox', 'present')
+
+        key['keypoints'] = posewarper_track(video, bbox, present)
+
+        self.insert1(key)
+
+        os.remove(video)
