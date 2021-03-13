@@ -115,63 +115,28 @@ class OpenposeParser:
         del self.opWrapper
         
         
-def parse_video(video_file, keypoints_only=True, outfile=None):
+def openpose_parse_video(video_file):
     
-    op = OpenposeParser()
+    op = OpenposeParser(face=False, hand=True)  #and=True, face=True)
     results = []
 
     cap = cv2.VideoCapture(video_file)
-    cont, frame = cap.read()
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    fps = cap.get(cv2.CAP_PROP_FPS)
-
-    if outfile is not None:
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        outfile = cv2.VideoWriter(outfile, fourcc, fps, (frame.shape[1], frame.shape[0])) 
-    
-    if keypoints_only:
-        def _add(res):
-            if res['keypoints'] is None:
-                results.append(np.zeros((25,3)))
-            else:
-                results.append(res['keypoints'])
-    else:
-        def _add(res):
-            if outfile is not None:
-                outfile.write(res.pop('im'))
-            results.append(res)
-
-    while cont and frame is not None:
-        _add(op.process_frame(frame))
+    for _ in tqdm(range(total_frames)):
         cont, frame = cap.read()
+        
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if not cont or frame is None:
+            break
+        
+        res = op.process_frame(frame)
+        res.pop('im')
+        results.append(res)
 
     op.stop()
     del op
     
     cap.release()
-    if outfile is not None:
-        outfile.release()
 
     return results
-
-
-def write_video(out_file, results, fps=30):
-    im = results[0]['im']
-
-    print(f'Out file: {out_file}')
-    print(f'Im shape: {im.shape}')
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-
-    out = cv2.VideoWriter(out_file,
-                          fourcc,
-                          fps,
-                          (im.shape[1], im.shape[0]))
-
-    for i in tqdm(range(len(results))):
-        im = results[i]['im']
-        #im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
-        out.write(im)
-
-    out.release()
-
-
