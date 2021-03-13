@@ -15,8 +15,10 @@ import models.pose_hrnet_PoseAgg
 from utils.transforms import get_affine_transform
 from utils.transforms import affine_transform
 from models.pose_hrnet_PoseAgg import get_pose_net
-from core.inference import get_final_preds
 from config import cfg
+
+# Use distribution-aware inference method
+from pose_pipeline.lib.inference import get_final_preds
 
 posewarper_dir = os.path.join(os.path.split(models.pose_hrnet_PoseAgg.__file__)[0], '../..')
 posewarper_model_path = os.path.join(posewarper_dir,
@@ -26,6 +28,7 @@ posewarper_experiment_file = os.path.join(posewarper_dir,
 
 # load the experiment settings
 cfg.merge_from_file(posewarper_experiment_file)
+cfg.TEST.BLUR_KERNEL = 11  # support for distribution aware inference
 
 # loading this outside the function to avoid recreating the model many times
 model = get_pose_net(cfg, False)
