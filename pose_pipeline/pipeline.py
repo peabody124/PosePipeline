@@ -77,7 +77,7 @@ def get_timestamps(d):
     times = [d['start_time'] + timedelta(0, i / fps) for i in range(frames)]
     return times
 
-
+       
 @schema
 class TrackingBbox(dj.Computed):
     definition = '''
@@ -194,6 +194,44 @@ class OpenPose(dj.Computed):
         os.remove(d['video'])
         os.remove(fname)
 
+
+@schema
+class BlurredVideo(dj.Computed):
+    definition = '''
+    -> Video
+    -> OpenPose
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    '''
+
+    def make(self, key):
+
+        from pose_pipeline.visualization import video_overlay
+        
+        video, keypoints = (Video * OpenPose & key).fetch1('video', 'keypoints')
+
+        def overlay_callback(image, idx):
+            image = image.copy()
+            found_noses = keypoints[idx][:, 0, -1] > 0.1
+            nose_positions = keypoints[idx][found_noses, 0, :2]
+            neck_positions = keypoints[idx][found_noses, 1, :2]
+
+            radius = np.linalg.norm(neck_positions - nose_positions, axis=1)
+
+            for i in range(nose_positions.shape[0]):
+                center = (int(nose_positions[i, 0]), int(nose_positions[i, 1]))
+                cv2.circle(image, center, int(radius[i]), (255, 255, 255), -1)
+
+            return image
+
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        video_overlay(video, out_file_name, overlay_callback, downsample=1)
+
+        key['output_video'] = out_file_name
+        self.insert1(key)
+
+        os.remove(out_file_name)
+        os.remove(video)
 
 @schema
 class OpenPosePerson(dj.Computed):
@@ -382,14 +420,17 @@ class PoseWarperPerson(dj.Computed):
 class PoseWarperPersonVideo(dj.Computed):
     definition = '''
     -> PoseWarperPerson
+    -> BlurredVideo
     ----
     output_video      : attach@localattach    # datajoint managed video file
     '''
 
     def make(self, key):
-        out_file_name = self.make_video(key)
+        out_file_name = PoseWarperPersonVideo.make_video(key)
         key['output_video'] = out_file_name
         self.insert1(key)
+
+        os.remove(out_file_name)
     
     @staticmethod
     def make_video(key, downsample=4):
@@ -397,7 +438,7 @@ class PoseWarperPersonVideo(dj.Computed):
 
         from pose_pipeline.visualization import video_overlay
 
-        video = (Video & key).fetch1('video')
+        video = (BlurredVideo & key).fetch1('output_video')
         keypoints = (PoseWarperPerson & key).fetch1('keypoints')
 
         def overlay(image, idx, radius=10):
