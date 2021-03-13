@@ -4,6 +4,7 @@ import cv2
 import tempfile
 import numpy as np
 import datajoint as dj
+from .util import match_keypoints_to_bbox
 
 dj.config['stores'] = {
     'localattach': {
@@ -207,63 +208,6 @@ class OpenPosePerson(dj.Computed):
 
     def make(self, key):
 
-        def keypoints_to_bbox(keypoints, thresh=0.1, min_keypoints=5):
-            valid = keypoints[:, -1] > thresh
-            keypoints = keypoints[valid, :-1]
-            
-            if keypoints.shape[0] < min_keypoints:
-                return [0.0, 0.0, 0.0, 0.0]
-            
-            bbox = [np.min(keypoints[:, 0]), np.min(keypoints[:, 1]), np.max(keypoints[:, 0]), np.max(keypoints[:, 1])]
-            bbox = bbox[:2] + [bbox[2] - bbox[0], bbox[3] - bbox[1]]
-            
-            return bbox
-
-        def IoU(box1: np.ndarray, box2: np.ndarray, tlhw=False, epsilon=1e-8):
-            """
-            calculate intersection over union cover percent
-            
-                :param box1: box1 with shape (N,4)
-                :param box2: box2 with shape (N,4)
-                :tlhw: bool if format is tlhw and need to be converted to tlbr
-                :return: IoU ratio if intersect, else 0
-            """
-            point_num = max(box1.shape[0], box2.shape[0])
-            b1p1, b1p2, b2p1, b2p2 = box1[:, :2], box1[:, 2:], box2[:, :2], box2[:, 2:]
-            
-            if tlhw:
-                b1p2 = b1p1 + b1p2
-                b2p2 = b2p1 + b2p2   
-
-            # mask that eliminates non-intersecting matrices
-            base_mat = np.ones(shape=(point_num,)).astype(float)
-            base_mat *= np.all(np.greater(b1p2 - b2p1, 0), axis=1)
-            base_mat *= np.all(np.greater(b2p2 - b1p1, 0), axis=1)
-            
-            # epsilon handles case where a bbox has zero size (so let's make that have a IoU=0)
-            intersect_area = np.prod(np.minimum(b2p2, b1p2) - np.maximum(b1p1, b2p1), axis=1).astype(float)
-            union_area = np.prod(b1p2 - b1p1, axis=1) + np.prod(b2p2 - b2p1, axis=1) - intersect_area + epsilon
-            intersect_ratio = intersect_area / union_area
-            
-            return base_mat * intersect_ratio
-
-        def match_keypoints_to_bbox(bbox: np.ndarray, keypoints_list: list, thresh=0.3, num_keypoints=25):
-            """ Finds the best keypoints with an acceptable IoU, if present """
-            
-            empty_keypoints = np.zeros((num_keypoints, 3))
-            
-            if keypoints_list is None or len(keypoints_list) == 0:
-                return empty_keypoints, None
-            
-            bbox = np.reshape(bbox, (1, 4))
-            iou = IoU(bbox, np.array([keypoints_to_bbox(k) for k in keypoints_list]) )
-            idx = np.argmax(iou)
-            
-            if iou[idx] > thresh:
-                return keypoints_list[idx], idx
-            
-            return empty_keypoints, None
-
         # fetch data     
         keypoints = (OpenPose & key).fetch1('keypoints')
         bbox = (PersonBbox & key).fetch1('bbox')
@@ -319,6 +263,9 @@ class OpenPosePerson(dj.Computed):
         key['output_video'] = fname
         self.insert1(key)
 
+        os.remove(video_filename)
+        os.remove(fname)
+
 
 @schema
 class CenterHMR(dj.Computed):
@@ -353,3 +300,58 @@ class CenterHMR(dj.Computed):
         os.remove(out_file_name)
 
 
+@schema
+class CenterHMRPerson(dj.Computed):
+    definition = '''
+    -> PersonBbox
+    -> CenterHMR
+    ---
+    keypoints        : longblob
+    poses            : longblob
+    betas            : longblob
+    cams             : longblob
+    global_orients   : longblob
+    centerhmr_ids    : longblob
+    '''
+
+    def make(self, key):
+
+        # TODO: get video resolution, but wait until it is in database
+        def convert_keypoints_to_image(keypoints, imsize=[1080, 1920]):    
+            mp = np.array(imsize) * 0.5
+            scale = np.max(np.array(imsize)) * 0.5
+
+            keypoints_image = keypoints * scale + mp
+            return list(keypoints_image)
+
+        print(key)
+
+        # fetch data     
+        hmr_results = (CenterHMR & key).fetch1('results')
+        bbox = (PersonBbox & key).fetch1('bbox')
+
+        # get the 2D keypoints. note these are scaled from (-0.5, 0.5) assuming a
+        # square image (hence convert_keypoints_to_image)
+        pj2d = [r['pj2d'] if 'pj2d' in r.keys() else np.zeros((0, 25, 2)) for r in hmr_results]
+        all_matches = [match_keypoints_to_bbox(bbox[idx], convert_keypoints_to_image(pj2d[idx]), visible=False)
+                       for idx in range(bbox.shape[0])]
+
+        keypoints, centerhmr_ids = list(zip(*all_matches)) 
+
+        key['poses'] = np.asarray([res['params']['body_pose'][id] 
+                                   if id is not None else np.empty((69,)).fill(np.nan) 
+                                   for res, id in zip(hmr_results, centerhmr_ids)])
+        key['betas'] = np.asarray([res['params']['betas'][id]
+                                   if id is not None else np.empty((10,)).fill(np.nan) 
+                                   for res, id in zip(hmr_results, centerhmr_ids)])
+        key['cams'] = np.asarray([res['params']['cam'][id]
+                                  if id is not None else np.empty((3,)).fill(np.nan) 
+                                  for res, id in zip(hmr_results, centerhmr_ids)])
+        key['global_orients'] = np.asarray([res['params']['global_orient'][id]
+                                            if id is not None else np.empty((3,)).fill(np.nan) 
+                                            for res, id in zip(hmr_results, centerhmr_ids)])
+
+        key['keypoints'] = np.asarray(keypoints)
+        key['centerhmr_ids'] = np.asarray(centerhmr_ids)
+
+        self.insert1(key)
