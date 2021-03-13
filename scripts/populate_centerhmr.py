@@ -1,10 +1,5 @@
-import numpy as np
-import pandas as pd
-import json
-import datetime
 import os
 import sys
-import cv2
 
 # start datajoint using local server
 import datajoint as dj
@@ -16,17 +11,15 @@ dj.config['database.password'] = 'pose'
 
 dj.config["enable_python_native_blobs"] = True
 
-home = os.path.expanduser("~")
-
-# for using pipeline system
-sys.path.append('..')
-pipeline_python_path = os.path.join(home, 'projects/pose/PosePipeline')
-sys.path.append(pipeline_python_path)
-from pose_pipeline.pipeline import VideoSession, Video, CenterHMR, OpenPose
 
 # for center HMR to work
+home = os.path.expanduser("~")
 centerhmr_python_path = os.path.join(home, 'projects/pose/CenterHMR/src')
 sys.path.append(centerhmr_python_path)
 sys.path.append(os.path.join(centerhmr_python_path, 'core'))
+
+# for using pipeline system
+sys.path.append(os.path.join(os.path.split(__file__)[0], '..'))
+from pose_pipeline.pipeline import CenterHMR
 
 CenterHMR.populate()

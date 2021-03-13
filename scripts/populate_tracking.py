@@ -12,13 +12,9 @@ dj.config['database.password'] = 'pose'
 dj.config["enable_python_native_blobs"] = True
 
 
-# for openpose to work
-home = os.path.expanduser("~")
-openpose_python_path = os.path.join(home, 'projects/pose/openpose/build/python')
-sys.path.append(openpose_python_path)
-
 # for using pipeline system
-sys.path.append(os.path.join(os.path.split(__file__)[0], '..'))
-from pose_pipeline.pipeline import OpenPose
+pose_pipeline_path = os.path.join(os.path.split(__file__)[0], '..')
+sys.path.append(pose_pipeline_path)
 
-OpenPose.populate()
+from pose_pipeline.pipeline import TrackingBbox 
+TrackingBbox.populate()

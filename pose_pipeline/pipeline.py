@@ -4,7 +4,7 @@ import cv2
 import tempfile
 import numpy as np
 import datajoint as dj
-from .util import match_keypoints_to_bbox
+from .utils.keypoint_matching import match_keypoints_to_bbox
 
 dj.config['stores'] = {
     'localattach': {
@@ -14,8 +14,6 @@ dj.config['stores'] = {
 }
 
 schema = dj.schema('pose_pipeline')
-
-# TODO 1: Implement pose warper based on bounding box analysis.
 
 # TODO 2: Remove interim videos from primary analyses. When possible, they should simply
 # be computed on the fly to save storage space (and less things that need to be kept
@@ -206,7 +204,7 @@ class BlurredVideo(dj.Computed):
 
     def make(self, key):
 
-        from pose_pipeline.visualization import video_overlay
+        from pose_pipeline.utils.visualization import video_overlay
         
         video, keypoints = (Video * OpenPose & key).fetch1('video', 'keypoints')
 
@@ -436,7 +434,7 @@ class PoseWarperPersonVideo(dj.Computed):
     def make_video(key, downsample=4):
         """ Create an overlay video """
 
-        from pose_pipeline.visualization import video_overlay
+        from pose_pipeline.utils.visualization import video_overlay
 
         video = (BlurredVideo & key).fetch1('output_video')
         keypoints = (PoseWarperPerson & key).fetch1('keypoints')
