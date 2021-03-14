@@ -97,3 +97,15 @@ def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur
 
     out.release()
     cap.release()
+
+
+def draw_keypoints(image, keypoints, radius=10, threshold=0.1):
+    """ Draw the keypoints on an image
+    """
+    image = image.copy()
+    for i in range(keypoints.shape[0]):
+        if keypoints[i, -1] > threshold:
+            cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius, (0, 0, 0), -1)
+            if radius > 2:
+                cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius-2, (255, 255, 255), -1)
+    return image

@@ -182,8 +182,8 @@ class OpenPose(dj.Computed):
         key['keypoints'] = [r['keypoints'] for r in res]
         key['pose_ids'] = [r['pose_ids'] for r in res]
         key['pose_scores'] = [r['pose_scores'] for r in res]
-        res['face_keypoints'] = [r['face_keypoints'] for r in res]
-        res['hand_keypoints'] = [r['hand_keypoints'] for r in res]
+        key['hand_keypoints'] = [r['hand_keypoints'] for r in res]
+        key['face_keypoints'] = [r['face_keypoints'] for r in res]
         
         self.insert1(key)
 
@@ -208,6 +208,9 @@ class BlurredVideo(dj.Computed):
 
         def overlay_callback(image, idx):
             image = image.copy()
+            if keypoints[idx] is None:
+                return image
+                
             found_noses = keypoints[idx][:, 0, -1] > 0.1
             nose_positions = keypoints[idx][found_noses, 0, :2]
             neck_positions = keypoints[idx][found_noses, 1, :2]
@@ -236,14 +239,14 @@ class OpenPosePerson(dj.Computed):
     -> OpenPose
     ---
     keypoints        : longblob
+    hand_keypoints   : longblob
     openpose_ids     : longblob
-    output_video      : attach@localattach    # datajoint managed video file
     '''
 
     def make(self, key):
 
         # fetch data     
-        keypoints = (OpenPose & key).fetch1('keypoints')
+        keypoints, hand_keypoints = (OpenPose & key).fetch1('keypoints', 'hand_keypoints')
         bbox = (PersonBbox & key).fetch1('bbox')
 
         res = [match_keypoints_to_bbox(bbox[idx], keypoints[idx]) for idx in range(bbox.shape[0])]
@@ -254,51 +257,55 @@ class OpenPosePerson(dj.Computed):
 
         key['keypoints'] = keypoints
         key['openpose_ids'] = openpose_ids
-        
-        # TODO: this should probably be another object with a lot of this code generalized
-        video_filename = (Video & key).fetch1('video')
 
-        cap = cv2.VideoCapture(video_filename)
-        w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        dsize = (int(w // 2), int(h // 2))
+        key['hand_keypoints'] = []
+
+        for openpose_id, hand_keypoint in zip(openpose_ids, hand_keypoints):
+            if openpose_id is None:
+                key['hand_keypoints'].append(np.zeros((2, 21, 3)))
+            else:
+                key['hand_keypoints'].append([hand_keypoint[0][openpose_id], hand_keypoint[1][openpose_id]])
+        key['hand_keypoints'] = np.asarray(key['hand_keypoints'])
+
+        self.insert1(key)
+        
+
+@schema
+class OpenPosePersonVideo(dj.Computed):
+    definition = '''
+    -> OpenPosePerson
+    -> BlurredVideo
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    '''
+
+    def make(self, key):
+
+        from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
+
+        # fetch data     
+        keypoints, hand_keypoints = (OpenPosePerson & key).fetch1('keypoints', 'hand_keypoints')        
+        video_filename = (BlurredVideo & key).fetch1('output_video')
 
         _, fname = tempfile.mkstemp(suffix='.mp4')
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        out = cv2.VideoWriter(fname, fourcc, fps, dsize)
+        
+        video = (BlurredVideo & key).fetch1('output_video')
+        keypoints = (PoseWarperPerson & key).fetch1('keypoints')
 
-        for idx in range(frames):
+        def overlay(image, idx):
+            image = draw_keypoints(image, keypoints[idx])
+            image = draw_keypoints(image, hand_keypoints[idx, 0])
+            image = draw_keypoints(image, hand_keypoints[idx, 1])
+            return image
 
-            def draw_frame(frame, idx=idx, dsize=dsize, thresh=0.25):
-                frame = frame.copy()
-                cv2.rectangle(frame, 
-                            (int(bbox[idx, 0]), int(bbox[idx, 1])), 
-                            (int(bbox[idx, 2] + bbox[idx, 0]), int(bbox[idx, 3] + bbox[idx, 1])),
-                            (255, 255, 255), 15)
-                for i in range(keypoints.shape[1]):
-                    if keypoints[idx, i, -1] > thresh:
-                        cv2.circle(frame, (int(keypoints[idx, i, 0]), int(keypoints[idx, i, 1])), 15,
-                                (0, 0, 255), -1)
-                        cv2.circle(frame, (int(keypoints[idx, i, 0]), int(keypoints[idx, i, 1])), 5,
-                                (0, 0, 0), -1)
-            
-                return cv2.resize(frame, dsize=dsize, interpolation=cv2.INTER_CUBIC)
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        video_overlay(video, out_file_name, overlay, downsample=4)
+        key['output_video'] = out_file_name
 
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                break
-
-            outframe = draw_frame(frame)
-            out.write(outframe)
-        out.release()
-        cap.release()
-
-        key['output_video'] = fname
         self.insert1(key)
 
-        os.remove(video_filename)
-        os.remove(fname)
+        os.remove(out_file_name)
+        os.remove(video)
 
 
 @schema

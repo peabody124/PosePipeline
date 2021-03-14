@@ -66,10 +66,11 @@ class OpenposeParser:
         params = {'model_folder': openpose_model_path,
                   'number_people_max': max_people}
 
-        #params["body"] = 1
+        params["body"] = 1
         
         self.face = face
         self.hand = hand
+        self.render = render
         
         if self.face:
             params["face"] = True
@@ -77,7 +78,7 @@ class OpenposeParser:
             
         if self.hand:
             params["hand"] = True
-            params["hand_detector"] = 1
+            params["hand_detector"] = 0
             
         if results_path is not None:
             params['write_json'] = results_path
@@ -86,6 +87,9 @@ class OpenposeParser:
             
         if not render:
             params['render_pose'] = 0
+
+
+        params['model_pose'] = 'BODY_25'
 
         self.opWrapper = op.WrapperPython()
         self.opWrapper.configure(params)
@@ -98,12 +102,10 @@ class OpenposeParser:
         datum.handRectangles = handRectangles
         self.opWrapper.emplaceAndPop(op.VectorDatum([datum]))
 
-        results = {'im': datum.cvOutputData,
-                   'keypoints': datum.poseKeypoints}
-        if self.hand:
-            results['hand_keypoints'] = datum.handKeypoints
-        if self.face:
-            results['face_keypoints'] = datum.faceKeypoints
+        results = {'im': datum.cvOutputData if self.render else None,
+                   'keypoints': datum.poseKeypoints,
+                   'hand_keypoints': datum.handKeypoints if self.hand else None,
+                   'face_keypoints': datum.faceKeypoints if self.face else None}
 
         results['pose_ids'] = datum.poseIds;
         results['pose_scores'] = datum.poseScores;
@@ -117,7 +119,7 @@ class OpenposeParser:
         
 def openpose_parse_video(video_file):
     
-    op = OpenposeParser(face=False, hand=True)  #and=True, face=True)
+    op = OpenposeParser(render=False, face=False, hand=True)
     results = []
 
     cap = cv2.VideoCapture(video_file)
