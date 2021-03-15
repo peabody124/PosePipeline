@@ -436,6 +436,67 @@ class CenterHMRPerson(dj.Computed):
 
 
 @schema
+class CenterHMRPersonVideo(dj.Computed):
+    definition = '''
+    -> CenterHMRPerson
+    -> BlurredVideo
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    '''
+
+    def make(self, key):
+
+        import platform
+        if 'Ubuntu' in platform.version():
+            # In Ubuntu, using osmesa mode for rendering
+            os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
+            
+        from pose_estimation.util.pyrender_renderer import PyrendererRenderer
+        from pose_estimation.body_models.smpl import SMPL
+        from pose_pipeline.utils.visualization import video_overlay
+
+        # fetch data     
+        pose_data = (CenterHMRPerson & key).fetch1()        
+        video_filename = (BlurredVideo & key).fetch1('output_video')
+
+        _, fname = tempfile.mkstemp(suffix='.mp4')
+        
+        video = (BlurredVideo & key).fetch1('output_video')
+
+        smpl = SMPL()
+
+        def overlay(image, idx):
+            body_pose = np.concatenate([pose_data['global_orients'][idx], pose_data['poses'][idx]])
+            body_beta = pose_data['betas'][idx]
+            
+            h, w = image.shape[:2]
+            if overlay.renderer is None:
+                overlay.renderer = PyrendererRenderer(smpl.get_faces(), (h, w))
+
+            verts = smpl(body_pose[None, ...], body_beta[None, ...])[0][0]
+
+            cam = [pose_data['cams'][idx][0], *pose_data['cams'][idx][:3]]
+            if h > w:
+                cam[0] = 1.1 ** cam[0] * (h / w)
+                cam[1] = (1.1 ** cam[1])
+            else:
+                cam[0] = 1.1 ** cam[0]
+                cam[1] = (1.1 ** cam[1]) * (w / h)
+            
+            return overlay.renderer(verts, cam, img=image)
+        overlay.renderer = None
+
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        video_overlay(video, out_file_name, overlay, downsample=4)
+        key['output_video'] = out_file_name
+
+        self.insert1(key)
+
+        os.remove(out_file_name)
+        os.remove(video)
+
+
+@schema
 class PoseWarperPerson(dj.Computed):
     definition = '''
     -> PersonBbox
