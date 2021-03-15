@@ -3,6 +3,7 @@ import os
 import cv2
 import tempfile
 import numpy as np
+from datetime import datetime, timedelta
 import datajoint as dj
 from .utils.keypoint_matching import match_keypoints_to_bbox
 
@@ -62,6 +63,34 @@ class Video(dj.Manual):
         if session_id is not None:
             d.update({'session_id': session_id})
         return d
+
+
+@schema
+class VideoInfo(dj.Computed):
+    definition = '''
+    -> Video
+    ---
+    timestamps      : longblob
+    fps             : float
+    height          : int
+    width           : int
+    frames          : int
+    '''
+
+    def make(self, key):
+        
+        video, start_time = (Video & key).fetch1('video', 'start_time')
+
+        cap = cv2.VideoCapture(video)
+        key['fps'] = fps = cap.get(cv2.CAP_PROP_FPS)
+        key['frames'] = frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        key['width'] = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        key['height'] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        key['timestamps'] = [start_time + timedelta(0, i / fps) for i in range(frames)]
+
+        self.insert1(key)
+
+        os.remove(video)
 
 
 def get_timestamps(d):
@@ -351,8 +380,6 @@ class CenterHMR(dj.Computed):
     -> Video
     ---
     results           : longblob
-    timestamps        : longblob
-    output_video      : attach@localattach    # datajoint managed video file
     '''
 
     def make(self, key):
@@ -369,12 +396,10 @@ class CenterHMR(dj.Computed):
         keys_to_keep = ['params',  'pj2d', 'j3d', 'j3d_smpl24', 'j3d_spin24', 'j3d_op25']
         res = [{k: v for k, v in r.items() if k in keys_to_keep} for r in res]
         key['results'] = res
-        key['timestamps'] = get_timestamps(video)
-        key['output_video'] = out_file_name
 
         self.insert1(key)
 
-        os.remove(video['video'])
+        # not saving the video in database, just to reduce space requirements
         os.remove(out_file_name)
 
 
@@ -402,8 +427,6 @@ class CenterHMRPerson(dj.Computed):
             keypoints_image = keypoints * scale + mp
             return list(keypoints_image)
 
-        print(key)
-
         # fetch data     
         hmr_results = (CenterHMR & key).fetch1('results')
         bbox = (PersonBbox & key).fetch1('bbox')
@@ -417,16 +440,16 @@ class CenterHMRPerson(dj.Computed):
         keypoints, centerhmr_ids = list(zip(*all_matches)) 
 
         key['poses'] = np.asarray([res['params']['body_pose'][id] 
-                                   if id is not None else np.empty((69,)).fill(np.nan) 
+                                   if id is not None else np.array([np.nan] * 69) * np.nan
                                    for res, id in zip(hmr_results, centerhmr_ids)])
         key['betas'] = np.asarray([res['params']['betas'][id]
-                                   if id is not None else np.empty((10,)).fill(np.nan) 
+                                   if id is not None else np.array([np.nan] * 10) * np.nan
                                    for res, id in zip(hmr_results, centerhmr_ids)])
         key['cams'] = np.asarray([res['params']['cam'][id]
-                                  if id is not None else np.empty((3,)).fill(np.nan) 
+                                  if id is not None else np.array([np.nan] * 3) * np.nan
                                   for res, id in zip(hmr_results, centerhmr_ids)])
         key['global_orients'] = np.asarray([res['params']['global_orient'][id]
-                                            if id is not None else np.empty((3,)).fill(np.nan) 
+                                            if id is not None else np.array([np.nan] * 3) * np.nan
                                             for res, id in zip(hmr_results, centerhmr_ids)])
 
         key['keypoints'] = np.asarray(keypoints)
@@ -468,12 +491,15 @@ class CenterHMRPersonVideo(dj.Computed):
         def overlay(image, idx):
             body_pose = np.concatenate([pose_data['global_orients'][idx], pose_data['poses'][idx]])
             body_beta = pose_data['betas'][idx]
+
+            if np.any(np.isnan(body_pose)):
+                return image
             
             h, w = image.shape[:2]
             if overlay.renderer is None:
                 overlay.renderer = PyrendererRenderer(smpl.get_faces(), (h, w))
 
-            verts = smpl(body_pose[None, ...], body_beta[None, ...])[0][0]
+            verts = smpl(body_pose.astype(np.float32)[None, ...], body_beta.astype(np.float32)[None, ...])[0][0]
 
             cam = [pose_data['cams'][idx][0], *pose_data['cams'][idx][:3]]
             if h > w:
