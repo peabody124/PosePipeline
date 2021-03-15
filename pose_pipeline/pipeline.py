@@ -75,90 +75,6 @@ def get_timestamps(d):
     times = [d['start_time'] + timedelta(0, i / fps) for i in range(frames)]
     return times
 
-       
-@schema
-class TrackingBbox(dj.Computed):
-    definition = '''
-    -> Video
-    ---
-    tracks            : longblob
-    timestamps        : longblob
-    output_video      : attach@localattach    # datajoint managed video file
-    '''
-
-    def make(self, key):
-        from pose_pipeline.deep_sort_yolov4.parser import tracking_bounding_boxes
-
-        print(f"Population {key['filename']}")
-        d = (Video & key).fetch1()
-
-        _, fname = tempfile.mkstemp(suffix='.mp4')
-        tracks = tracking_bounding_boxes(d['video'], fname)
-
-        key['tracks'] = tracks
-        key['timestamps'] = get_timestamps(d)
-        key['output_video'] = fname
-
-        self.insert1(key)
-
-        # remove the downloaded video to avoid clutter
-        os.remove(d['video'])
-        os.remove(fname)
-
-
-@schema
-class Subject(dj.Manual):
-    definition = '''
-    subject_id        : varchar(50)
-    '''
-    # TODO: might want to add more information. Should IRB be here instead of VideoSession?
-
-
-@schema
-class PersonBboxValid(dj.Manual):
-    definition = '''
-    -> TrackingBbox
-    -> Subject
-    ---
-    keep_tracks       : longblob
-    '''
-
-
-@schema
-class PersonBbox(dj.Computed):
-    definition = '''
-    -> PersonBboxValid
-    ---
-    bbox               : longblob
-    present            : longblob
-    '''
-
-    def make(self, key):
-        
-        tracks = (TrackingBbox & key).fetch1('tracks')
-        keep_tracks = (PersonBboxValid & key).fetch1('keep_tracks')
-
-        def extract_person_track(tracks):
-            
-            def process_timestamp(track_timestep):
-                valid = [t for t in track_timestep if t['track_id'] in keep_tracks]
-                if len(valid) == 1:
-                    return {'present': True, 'bbox': valid[0]['tlwh']}
-                else:
-                    return {'present': False, 'bbox': [0.0, 0.0, 0.0, 0.0]}
-                
-            return [process_timestamp(t) for t in tracks]
-
-        LD = main_track = extract_person_track(tracks) 
-        dict_lists = {k: [dic[k] for dic in LD] for k in LD[0]}
-
-        present = np.array(dict_lists['present'])
-       
-        key['present'] = np.array(dict_lists['present'])
-        key['bbox'] =  np.array(dict_lists['bbox'])
-
-        self.insert1(key)
-
 
 @schema
 class OpenPose(dj.Computed):
@@ -232,6 +148,127 @@ class BlurredVideo(dj.Computed):
         os.remove(out_file_name)
         os.remove(video)
 
+
+@schema
+class TrackingBbox(dj.Computed):
+    definition = '''
+    -> Video
+    ---
+    tracks            : longblob
+    '''
+
+    def make(self, key):
+        from pose_pipeline.deep_sort_yolov4.parser import tracking_bounding_boxes
+
+        print(f"Populating {key['filename']}")
+        d = (Video & key).fetch1()
+
+        tracks = tracking_bounding_boxes(d['video'])
+
+        key['tracks'] = tracks
+
+        self.insert1(key)
+
+        # remove the downloaded video to avoid clutter
+        os.remove(d['video'])
+
+
+@schema
+class TrackingBboxVideo(dj.Computed):
+    definition = '''
+    -> BlurredVideo
+    -> TrackingBbox
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    '''
+
+    def make(self, key):
+
+        from pose_pipeline.utils.visualization import video_overlay
+        
+        def overlay_callback(image, idx):    
+            image = image.copy()
+            
+            for track in tracks[idx]:
+                bbox = track['tlbr']
+                cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), 6)
+                cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 0, 255), 3)
+                
+                x = int((bbox[0] + bbox[2]) / 2-150)
+                y = int((bbox[3] + bbox[1]) / 2)
+                cv2.putText(image, "ID: " + str(track['track_id']), (x, y), 0, 2.0e-3 * image.shape[0], (0, 0, 0), thickness=15)
+                cv2.putText(image, "ID: " + str(track['track_id']), (x, y), 0, 2.0e-3 * image.shape[0], (255, 255, 255), thickness=10)
+
+            return image
+
+        video = (BlurredVideo & key).fetch1('output_video')
+        tracks = (TrackingBbox & key).fetch1('tracks')
+
+        _, fname = tempfile.mkstemp(suffix='.mp4')
+        video_overlay(video, fname, overlay_callback, downsample=4)
+
+        key['output_video'] = fname
+
+        self.insert1(key)
+
+        # remove the downloaded video to avoid clutter
+        os.remove(video)
+        os.remove(fname)
+
+@schema
+class Subject(dj.Manual):
+    definition = '''
+    subject_id        : varchar(50)
+    '''
+    # TODO: might want to add more information. Should IRB be here instead of VideoSession?
+
+
+@schema
+class PersonBboxValid(dj.Manual):
+    definition = '''
+    -> TrackingBbox
+    -> Subject
+    ---
+    keep_tracks       : longblob
+    '''
+
+
+@schema
+class PersonBbox(dj.Computed):
+    definition = '''
+    -> PersonBboxValid
+    ---
+    bbox               : longblob
+    present            : longblob
+    '''
+
+    def make(self, key):
+        
+        tracks = (TrackingBbox & key).fetch1('tracks')
+        keep_tracks = (PersonBboxValid & key).fetch1('keep_tracks')
+
+        def extract_person_track(tracks):
+            
+            def process_timestamp(track_timestep):
+                valid = [t for t in track_timestep if t['track_id'] in keep_tracks]
+                if len(valid) == 1:
+                    return {'present': True, 'bbox': valid[0]['tlwh']}
+                else:
+                    return {'present': False, 'bbox': [0.0, 0.0, 0.0, 0.0]}
+                
+            return [process_timestamp(t) for t in tracks]
+
+        LD = main_track = extract_person_track(tracks) 
+        dict_lists = {k: [dic[k] for dic in LD] for k in LD[0]}
+
+        present = np.array(dict_lists['present'])
+       
+        key['present'] = np.array(dict_lists['present'])
+        key['bbox'] =  np.array(dict_lists['bbox'])
+
+        self.insert1(key)
+
+
 @schema
 class OpenPosePerson(dj.Computed):
     definition = '''
@@ -290,7 +327,7 @@ class OpenPosePersonVideo(dj.Computed):
         _, fname = tempfile.mkstemp(suffix='.mp4')
         
         video = (BlurredVideo & key).fetch1('output_video')
-        keypoints = (PoseWarperPerson & key).fetch1('keypoints')
+        keypoints = (OpenPosePerson & key).fetch1('keypoints')
 
         def overlay(image, idx):
             image = draw_keypoints(image, keypoints[idx])

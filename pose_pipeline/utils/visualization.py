@@ -1,5 +1,7 @@
 import os
 import cv2
+import tempfile
+import subprocess
 import numpy as np
 from tqdm import tqdm
 
@@ -51,7 +53,7 @@ class FaceBlur:
         return self.blur_faces(image)
 
 
-def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur_faces=False):
+def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur_faces=False, compress=True):
     """ Process a video and create overlay image 
     
         Args:
@@ -97,6 +99,11 @@ def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur
 
     out.release()
     cap.release()
+
+    if compress:
+        _, temp = tempfile.mkstemp(suffix='.mp4')
+        subprocess.run(['ffmpeg', '-y', '-i', output_name, '-c:v', 'libx264', '-b:v', '1M', temp])
+        subprocess.run(['mv', temp, output_name])
 
 
 def draw_keypoints(image, keypoints, radius=10, threshold=0.1):
