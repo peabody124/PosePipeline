@@ -93,18 +93,6 @@ class VideoInfo(dj.Computed):
         os.remove(video)
 
 
-def get_timestamps(d):
-    import cv2
-    from datetime import timedelta
-
-    cap = cv2.VideoCapture(d['video'])
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    times = [d['start_time'] + timedelta(0, i / fps) for i in range(frames)]
-    return times
-
-
 @schema
 class OpenPose(dj.Computed):
     definition = '''
@@ -386,11 +374,11 @@ class CenterHMR(dj.Computed):
 
         from pose_pipeline.wrappers.centerhmr import parse_video
 
-        video = (Video & key).fetch1()
+        video = (Video & key).fetch1('video')
         
         _, out_file_name = tempfile.mkstemp(suffix='.mp4')
 
-        res = parse_video(video['video'], out_file_name)
+        res = parse_video(video, out_file_name)
 
         # don't store verticies or images
         keys_to_keep = ['params',  'pj2d', 'j3d', 'j3d_smpl24', 'j3d_spin24', 'j3d_op25']
@@ -401,6 +389,7 @@ class CenterHMR(dj.Computed):
 
         # not saving the video in database, just to reduce space requirements
         os.remove(out_file_name)
+        os.remove(video)
 
 
 @schema
@@ -408,6 +397,7 @@ class CenterHMRPerson(dj.Computed):
     definition = '''
     -> PersonBbox
     -> CenterHMR
+    -> VideoInfo
     ---
     keypoints        : longblob
     poses            : longblob
@@ -419,8 +409,9 @@ class CenterHMRPerson(dj.Computed):
 
     def make(self, key):
 
-        # TODO: get video resolution, but wait until it is in database
-        def convert_keypoints_to_image(keypoints, imsize=[1080, 1920]):    
+        width, height = (VideoInfo & key).fetch1('width', 'height')
+
+        def convert_keypoints_to_image(keypoints, imsize=[width, height]):    
             mp = np.array(imsize) * 0.5
             scale = np.max(np.array(imsize)) * 0.5
 
@@ -560,7 +551,7 @@ class PoseWarperPersonVideo(dj.Computed):
         os.remove(out_file_name)
     
     @staticmethod
-    def make_video(key, downsample=4):
+    def make_video(key, downsample=4, thresh=0.1):
         """ Create an overlay video """
 
         from pose_pipeline.utils.visualization import video_overlay
@@ -571,7 +562,7 @@ class PoseWarperPersonVideo(dj.Computed):
         def overlay(image, idx, radius=10):
             image = image.copy()
             for i in range(keypoints.shape[1]):
-                if keypoints[idx, i, -1] > 0.1:
+                if keypoints[idx, i, -1] > thresh:
                     cv2.circle(image, (int(keypoints[idx, i, 0]), int(keypoints[idx, i, 1])), radius, (0, 0, 0), -1)
                     cv2.circle(image, (int(keypoints[idx, i, 0]), int(keypoints[idx, i, 1])), radius-2, (255, 255, 255), -1)
             return image

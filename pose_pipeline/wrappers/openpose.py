@@ -126,11 +126,12 @@ def openpose_parse_video(video_file):
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     for _ in tqdm(range(total_frames)):
-        cont, frame = cap.read()
-        
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        if not cont or frame is None:
+        ret, frame = cap.read()
+
+        if not ret or frame is None:
             break
+         
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
         res = op.process_frame(frame)
         res.pop('im')
