@@ -16,7 +16,12 @@ import math
 import numpy as np
 import cv2
 
-from utils.transforms import transform_preds
+
+def transform_preds(coords, bbox, hm_size):
+    """ Transform predictions that are (0, 1) on the heatmap coordinates 
+        from a bounding box into src image coordinates """
+
+    return bbox[:2] + coords / hm_size * bbox[2:]
 
 
 def get_max_preds(batch_heatmaps):
@@ -89,7 +94,7 @@ def gaussian_blur(hm, kernel):
     return hm
 
 
-def get_final_preds(config, hm, center, scale):
+def get_final_preds(config, hm, bbox):
     coords, maxvals = get_max_preds(hm)
     heatmap_height = hm.shape[2]
     heatmap_width = hm.shape[3]
@@ -107,7 +112,7 @@ def get_final_preds(config, hm, center, scale):
     # Transform back
     for i in range(coords.shape[0]):
         preds[i] = transform_preds(
-            coords[i], center[i], scale[i], [heatmap_width, heatmap_height]
+            coords[i], bbox[i], [heatmap_width, heatmap_height]
         )
 
     return preds, maxvals

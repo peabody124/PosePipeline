@@ -12,13 +12,12 @@ assert torch.__version__ == '1.1.0', "Must use Torch 1.1.0 for PoseWarper"
 # PoseWarper isn't well packaged into a module, so expects to have
 # the PoseWarper/lib directory in path
 import models.pose_hrnet_PoseAgg
-from utils.transforms import get_affine_transform
-from utils.transforms import affine_transform
 from models.pose_hrnet_PoseAgg import get_pose_net
 from config import cfg
 
 # Use distribution-aware inference method
-from pose_pipeline.lib.inference import get_final_preds
+from pose_pipeline.utils.inference import get_final_preds
+from pose_pipeline.utils.bounding_box import crop_image_bbox
 
 posewarper_dir = os.path.join(os.path.split(models.pose_hrnet_PoseAgg.__file__)[0], '../..')
 posewarper_model_path = os.path.join(posewarper_dir,
@@ -35,7 +34,7 @@ model = get_pose_net(cfg, False)
 model.load_state_dict(torch.load(posewarper_model_path))
 model = model.cuda()
 
-def posewarper_track(video, bboxes, present, step=1, pixel_std = 200.0):
+def posewarper_track(video, bboxes, present, step=3, pixel_std = 200.0):
     """ Process a video with PoseWarper given provided bboxes 
 
         Args:
@@ -52,18 +51,19 @@ def posewarper_track(video, bboxes, present, step=1, pixel_std = 200.0):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    def prepare_frame(frame, center, scale, transform=transform, target_size=(288, 384)):
-    
-        trans = get_affine_transform(center, scale, 0, target_size)
-        image = cv2.warpAffine(frame, trans, target_size, flags=cv2.INTER_LINEAR)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    def prepare_frame(frame, bbox, transform=transform, target_size=(288, 384)):
+        image, bbox = crop_image_bbox(frame, bbox)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)        
+        image = transform(image)
 
-        x = transform(image)
-
-        return x
+        return image, bbox
 
     cap = cv2.VideoCapture(video)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+    height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    aspect_ratio = width / height
 
     results = []
     frame_buffer = []
@@ -73,24 +73,29 @@ def posewarper_track(video, bboxes, present, step=1, pixel_std = 200.0):
         if not ret or frame is None:
             break
         
+        # warm it up with the same frame
+        if len(frame_buffer) == 0:
+            frame_buffer = [frame] * (5 * step)
+
         frame_buffer.append(frame)
         
-        if len(frame_buffer) < (5 * step):  # still warming up
-            continue
-        
-        center_idx = idx - step * 2
-        if present[center_idx]:  # person was found on the frame in center of sequence        
-            x, y, w, h = bboxes[center_idx]
-            center = np.array([x + w * 0.5, y + h * 0.5], dtype=np.float32)
-            scale = np.array([w * 1.0 / pixel_std, h * 1.0 / pixel_std], dtype=np.float32)
-            
-            active_frames = [prepare_frame(f, center, scale) for f in frame_buffer[::step]]
+        center_idx = np.max(idx - step * 2, 0)
+
+        if center_idx >= 0 and present[center_idx]:  # person was found on the frame in center of sequence        
+            assert center_idx >= 0
+                       
+            #if idx % 50 == 0:
+            #    print(idx, bboxes[center_idx], aspect_ratio, h, w, int(scale[0] * 200))
+
+            active_frames = [prepare_frame(f, bboxes[center_idx]) for f in frame_buffer[::step]]
+            bbox = active_frames[0][1]
+            active_frames = [x[0] for x in active_frames]  # strip out the bounding boxes
 
             # could do some clever code to group these into batches, but skipping for now
             concat_input = torch.cat((active_frames[2], active_frames[1], active_frames[0], active_frames[3], active_frames[4]), 0)[None, ...].cuda()
             outputs = model(concat_input)
             
-            results.append({'heatmaps': outputs.cpu().detach().numpy(), 'center': center, 'scale': scale, 'frame': center_idx})
+            results.append({'heatmaps': outputs.cpu().detach().numpy(), 'bbox': bbox, 'frame': center_idx})
         
         frame_buffer = frame_buffer[1:]  # discard oldest frame
         
@@ -99,7 +104,7 @@ def posewarper_track(video, bboxes, present, step=1, pixel_std = 200.0):
 
     heatmaps = np.concatenate(v['heatmaps'], axis=0)
 
-    keypoints, maxvals = get_final_preds(cfg, heatmaps, v['center'], v['scale'])
+    keypoints, maxvals = get_final_preds(cfg, heatmaps, v['bbox'])
 
     keypoints_final = np.zeros((total_frames, 17, 3), dtype=np.float32)
 
