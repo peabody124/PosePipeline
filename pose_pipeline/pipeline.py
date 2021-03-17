@@ -348,8 +348,8 @@ class OpenPosePersonVideo(dj.Computed):
 
         def overlay(image, idx):
             image = draw_keypoints(image, keypoints[idx])
-            image = draw_keypoints(image, hand_keypoints[idx, 0])
-            image = draw_keypoints(image, hand_keypoints[idx, 1])
+            image = draw_keypoints(image, hand_keypoints[idx, 0], threshold=0.02)
+            image = draw_keypoints(image, hand_keypoints[idx, 1], threshold=0.02)
             return image
 
         _, out_file_name = tempfile.mkstemp(suffix='.mp4')

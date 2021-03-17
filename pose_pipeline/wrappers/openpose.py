@@ -50,6 +50,8 @@ openpose_joints = {
     'OP_LANKLE': 14,
     'OP_REYE': 15,
     'OP_LEYE': 16,
+    'OP_REAR': 17,
+    'OP_LEAR': 18,
     'OP_LBIGTOE': 19,
     'OP_LSMALLTOE': 20,
     'OP_LHEEL': 21,
