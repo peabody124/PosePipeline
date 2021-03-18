@@ -25,7 +25,7 @@ class VideoWithBoxes(dutils.Dataset):
                  bboxes,
                  present,
                  transforms=None,
-                 scale_factor=1.5,
+                 scale_factor=1.2,
                  **kwargs):
         super(VideoWithBoxes, self).__init__()
 
@@ -161,7 +161,7 @@ def expose_parse_video(video, bboxes, present, config_file, device=torch.device(
         frame_idx = [t.get_field('frame_idx') for t in body_targets]
         camera_parameters = model_output['body']['camera_parameters']
         camera_scale = cpu(camera_parameters['scale'])[:, 0].tolist()
-        camera_transl = cpu(camera_parameters['translation'])[:, 0].tolist()
+        camera_transl = cpu(camera_parameters['translation']).tolist()
 
         params = model_output['body']['stage_02']
         initial_params = {k: v.cpu().detach().numpy() for k, v in params.items() if k not in ['faces']}
@@ -182,3 +182,91 @@ def expose_parse_video(video, bboxes, present, config_file, device=torch.device(
         results['final_params'].extend(final_params)
 
     return results
+
+
+def weak_persp_to_blender(
+        targets,
+        camera_scale,
+        camera_transl,
+        H, W,
+        sensor_width=36,
+        focal_length=5000):
+    ''' Converts weak-perspective camera to a perspective camera
+    '''
+    if torch.is_tensor(camera_scale):
+        camera_scale = camera_scale.detach().cpu().numpy()
+    if torch.is_tensor(camera_transl):
+        camera_transl = camera_transl.detach().cpu().numpy()
+
+    output = defaultdict(lambda: [])
+    for ii, target in enumerate(targets):
+        orig_bbox_size = target.get_field('orig_bbox_size')
+        bbox_center = target.get_field('orig_center')
+        z = 2 * focal_length / (camera_scale[ii] * orig_bbox_size)
+
+        transl = [
+            camera_transl[ii, 0].item(), camera_transl[ii, 1].item(),
+            z.item()]
+        shift_x = - (bbox_center[0] / W - 0.5)
+        shift_y = (bbox_center[1] - 0.5 * H) / W
+        focal_length_in_mm = focal_length / W * sensor_width
+        output['shift_x'].append(shift_x)
+        output['shift_y'].append(shift_y)
+        output['transl'].append(transl)
+        output['focal_length_in_mm'].append(focal_length_in_mm)
+        output['focal_length_in_px'].append(focal_length)
+        output['center'].append(bbox_center)
+        output['sensor_width'].append(sensor_width)
+    for key in output:
+        output[key] = np.stack(output[key], axis=0)
+    return output
+
+
+class ExposeVideoWriter:
+
+    def __init__(self, results, body_crop_size=256, focal_length=5000.0):
+
+        self.renderer = HDRenderer(img_size=body_crop_size)
+        self.focal_length = focal_length
+        self.results = results
+        self.faces = results['faces']
+
+        self.camera_scale = results['camera_scale']
+        self.camera_transl = results['camera_transl']
+        self.bbox_size = results['bbox_size']
+        self.bbox_center = results['bbox_center']
+        self.frames = results['frames']
+
+    def get_overlay_fn(self):
+
+        def overlay_frame(image, frame_idx):
+
+            idx = [idx for idx, val in enumerate(self.frames) if val == frame_idx]
+            if len(idx) != 1:
+                return image
+            idx = idx[0]
+
+            image = image / 255.0
+
+            vertices = self.results['final_params'][idx]['vertices']
+
+            z = 2 * self.focal_length / (self.camera_scale[idx] * self.bbox_size[idx])
+
+            transl = [*self.camera_transl[idx], z]
+
+            image = self.renderer(vertices[None, ...],
+                    self.faces,
+                    focal_length=[self.focal_length],
+                    camera_translation=[transl],
+                    camera_center=[self.bbox_center[idx]],
+                    bg_imgs=[np.transpose(image, [2, 0, 1])],
+                    return_with_alpha=False,
+                    body_color=[0.4, 0.4, 0.7]
+            )
+
+            image = np.transpose(image[0], [1, 2, 0])
+            image = (image * 255).astype(np.uint8)
+
+            return image
+
+        return overlay_frame

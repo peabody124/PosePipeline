@@ -607,3 +607,32 @@ class ExposePerson(dj.Computed):
         self.insert1(key)
 
         os.remove(video)
+
+@schema
+class ExposePersonVideo(dj.Computed):
+    definition = '''
+    -> ExposePerson
+    ----
+    output_video      : attach@localattach    # datajoint managed video file
+    '''
+
+    def make(self, key):
+
+        from pose_pipeline.wrappers.expose import ExposeVideoWriter
+        from pose_pipeline.utils.visualization import video_overlay
+
+        # fetch data       
+        video = (BlurredVideo & key).fetch1('output_video')
+        results = (ExposePerson & key).fetch1('results')
+
+        vw = ExposeVideoWriter(results)
+        overlay_fn = vw.get_overlay_fn()
+
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        video_overlay(video, out_file_name, overlay_fn, downsample=4)
+        key['output_video'] = out_file_name
+
+        self.insert1(key)
+
+        os.remove(out_file_name)
+        os.remove(video)
