@@ -574,3 +574,36 @@ class PoseWarperPersonVideo(dj.Computed):
 
         return out_file_name
 
+
+@schema
+class ExposePerson(dj.Computed):
+    definition = '''
+    -> PersonBbox
+    ---
+    results        : longblob
+    '''
+
+    def make(self, key):
+
+        import sys
+        import os
+
+        home = os.path.expanduser("~")
+
+        # for Expose to work
+        expose_python_path = os.path.join(home, 'projects/pose/expose')
+        sys.path.append(expose_python_path)
+
+        from pose_pipeline.wrappers.expose import expose_parse_video
+
+        video = (Video & key).fetch1('video')
+        bboxes, present = (PersonBbox & key).fetch1('bbox', 'present')
+
+        os.chdir(expose_python_path)
+        exp_cfg = './data/conf.yaml'
+
+        key['results'] = expose_parse_video(video, bboxes, present, exp_cfg)
+
+        self.insert1(key)
+
+        os.remove(video)
