@@ -1,5 +1,6 @@
 
 import os
+import sys
 import cv2
 import tempfile
 import numpy as np
@@ -585,22 +586,14 @@ class ExposePerson(dj.Computed):
 
     def make(self, key):
 
-        import sys
-        import os
-
-        home = os.path.expanduser("~")
-
-        # for Expose to work
-        expose_python_path = os.path.join(home, 'projects/pose/expose')
-        sys.path.append(expose_python_path)
+        # need to add this to path before importing the parse function
+        sys.path.append(os.environ['EXPOSE_PATH'])
+        exp_cfg = os.path.join(os.environ['EXPOSE_PATH'], 'data/conf.yaml')
 
         from pose_pipeline.wrappers.expose import expose_parse_video
 
         video = (Video & key).fetch1('video')
         bboxes, present = (PersonBbox & key).fetch1('bbox', 'present')
-
-        os.chdir(expose_python_path)
-        exp_cfg = './data/conf.yaml'
 
         key['results'] = expose_parse_video(video, bboxes, present, exp_cfg)
 
@@ -618,10 +611,12 @@ class ExposePersonVideo(dj.Computed):
 
     def make(self, key):
 
+        sys.path.append(os.environ['EXPOSE_PATH'])
+
         from pose_pipeline.wrappers.expose import ExposeVideoWriter
         from pose_pipeline.utils.visualization import video_overlay
 
-        # fetch data       
+        # fetch data
         video = (BlurredVideo & key).fetch1('output_video')
         results = (ExposePerson & key).fetch1('results')
 

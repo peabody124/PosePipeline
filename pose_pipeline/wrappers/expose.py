@@ -32,31 +32,12 @@ class VideoWithBoxes(dutils.Dataset):
         # to return with metadata
         self.video_name = os.path.splitext(os.path.split(video)[1])[0]
         
-        cap = cv2.VideoCapture(video)        
-        # preload the entire video into memory
-        self.imgs = []
+        self.cap = cv2.VideoCapture(video)
         
         # frames with valid bounding box
         self.valid_idx = np.where(present)[0]
-        
-        # limited processing for now
-        #self.valid_idx = self.valid_idx[:100]
-        
-        for idx in tqdm(self.valid_idx):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = cap.read()
-
-            if ret is False or frame is None:
-                break
-                
-            img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            if img.dtype == np.uint8:
-                img = img.astype(np.float32) / 255.0
-                
-            self.imgs.append(img)
             
-        self.total_frames = len(self.imgs)
-        cap.release()
+        self.total_frames = len(self.valid_idx)
 
         self.transforms = transforms
 
@@ -64,13 +45,22 @@ class VideoWithBoxes(dutils.Dataset):
         self.scale_factor = scale_factor
 
     def __len__(self):
-        return self.total_frames
+        return len(self.valid_idx)
 
     def __getitem__(self, index):
         
-        img = self.imgs[index]
         bbox = self.bboxes[index]
-        
+
+        frame_idx = self.valid_idx[index]
+        reads = 1 + frame_idx - int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+
+        for _ in range(reads):
+            ret, frame = self.cap.read()
+            
+            img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if img.dtype == np.uint8:
+                img = img.astype(np.float32) / 255.0
+
         # bounding boxes are stored in datajoint as TLHW format
         bbox = np.array([bbox[0], bbox[1], bbox[2]+bbox[0], bbox[3]+bbox[1]])
         #bbox = torch.tensor(bbox).to(device=device)
@@ -98,7 +88,7 @@ def cpu(tensor):
     return tensor.cpu().detach().numpy()
 
 
-def expose_parse_video(video, bboxes, present, config_file, device=torch.device('cuda'), num_workers=1, batch_size=64):
+def expose_parse_video(video, bboxes, present, config_file, device=torch.device('cuda'), batch_size=64):
 
     logger.remove()
 
@@ -107,9 +97,21 @@ def expose_parse_video(video, bboxes, present, config_file, device=torch.device(
     cfg.merge_from_file(config_file)
     cfg.is_training = False
 
+    def update_dict(d):
+        for k, v in d.items():
+            if isinstance(v, str) and v.startswith('data'):
+                d[k] = os.path.join(os.environ['EXPOSE_PATH'], v)
+            if isinstance(v, dict):
+                update_dict(v)
+    update_dict(cfg)
+
     # load model with checkpoint
     model = SMPLXNet(cfg)
     model = model.to(device=device)
+
+    # annoyingly, despite above, still need to change working directory to load model
+    pwd = os.getcwd()
+    os.chdir(os.environ['EXPOSE_PATH'])
 
     checkpoint_folder = os.path.join(cfg.output_folder, cfg.checkpoint_folder)
     checkpointer = Checkpointer(model, save_dir=checkpoint_folder, pretrained=cfg.pretrained)
@@ -117,10 +119,15 @@ def expose_parse_video(video, bboxes, present, config_file, device=torch.device(
 
     model = model.eval()
 
+    os.chdir(pwd)
+
     # prepare data parser
     dataset_cfg = cfg.get('datasets', {})
     body_dsets_cfg = dataset_cfg.get('body', {})
     body_transfs_cfg = body_dsets_cfg.get('transforms', {})
+
+    # must be zero with the code above
+    num_workers = 0
 
     transforms = build_transforms(body_transfs_cfg, is_train=False)
     dataset = VideoWithBoxes(video, bboxes, present, transforms=transforms)
