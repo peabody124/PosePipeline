@@ -17,22 +17,6 @@ dj.config['stores'] = {
 
 schema = dj.schema('pose_pipeline')
 
-# TODO 2: Remove interim videos from primary analyses. When possible, they should simply
-# be computed on the fly to save storage space (and less things that need to be kept
-# secure). When too slow, they ideally _still_ be split off as a separate class that
-# can be populated and deleted based on need. Finally, when that would require too
-# much manual rework of the upstream code, then still store as separate objects that
-# can ultimately be deleted.
-
-# TODO 3: refactor timestamps out of all the classes and just compute it once. breaks joins
-# and it is easy to get when needed. We will use the frame index as the primary thing for
-# this pipeline, although timestamps obviously become relevant with downstream analyses.
-
-# TODO 4: implement code that blurs all faces and apply that to all interim analysis videos
-# by default. As a step towards this, should also refactor video writer into a general
-# utility function. May want to precompute a face-blurred image and store that for subsequent
-# visualizations, depending on the ultimate speed. This ties into TODO 2.
-
 @schema
 class VideoSession(dj.Manual):
     definition = '''
