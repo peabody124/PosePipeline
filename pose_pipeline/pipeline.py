@@ -5,36 +5,29 @@ import cv2
 import tempfile
 import numpy as np
 from datetime import datetime, timedelta
+
 import datajoint as dj
+
 from .utils.keypoint_matching import match_keypoints_to_bbox
+
+schema = dj.schema('pose_pipeline')
 
 dj.config['stores'] = {
     'localattach': {
         'protocol': 'file',
-        'location': '/home/jcotton/projects/pose/dj_pose_videos'
+        'location': '/mnt/08b179d4-cd3b-4ff2-86b5-e7eadb020223/pose_videos/dj'
     }
 }
-
-schema = dj.schema('pose_pipeline')
-
-@schema
-class VideoSession(dj.Manual):
-    definition = '''
-    session_id : smallint auto_increment
-    ---
-    date : date
-    irb  : varchar(50)
-    '''
 
 
 @schema
 class Video(dj.Manual):
     definition = '''
-    -> VideoSession
-    filename   : varchar(50)
+    video_project       : varchar(50)
+    filename            : varchar(100)
     ---
-    video      : attach@localattach    # datajoint managed video file
-    start_time : timestamp             # time of beginning of video, as accurately as known
+    video               : attach@localattach    # datajoint managed video file
+    start_time          : timestamp             # time of beginning of video, as accurately as known
     '''
 
     @staticmethod
@@ -217,21 +210,14 @@ class TrackingBboxVideo(dj.Computed):
         os.remove(video)
         os.remove(fname)
 
-@schema
-class Subject(dj.Manual):
-    definition = '''
-    subject_id        : varchar(50)
-    '''
-    # TODO: might want to add more information. Should IRB be here instead of VideoSession?
-
 
 @schema
 class PersonBboxValid(dj.Manual):
     definition = '''
     -> TrackingBbox
-    -> Subject
+    video_subject_id        : int
     ---
-    keep_tracks       : longblob
+    keep_tracks             : longblob
     '''
 
 
