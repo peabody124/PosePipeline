@@ -127,6 +127,7 @@ class BlurredVideo(dj.Computed):
             neck_positions = keypoints[idx][found_noses, 1, :2]
 
             radius = np.linalg.norm(neck_positions - nose_positions, axis=1)
+            radius = np.clip(radius, 10, 250)
 
             for i in range(nose_positions.shape[0]):
                 center = (int(nose_positions[i, 0]), int(nose_positions[i, 1]))
