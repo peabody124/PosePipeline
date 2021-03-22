@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import datajoint as dj
 
 from .utils.keypoint_matching import match_keypoints_to_bbox
+from .env import add_path
 
 schema = dj.schema('pose_pipeline')
 
@@ -84,11 +85,12 @@ class OpenPose(dj.Computed):
     '''
 
     def make(self, key):
-        from pose_pipeline.wrappers.openpose import openpose_parse_video
-
+        
         d = (Video & key).fetch1()
 
-        res = openpose_parse_video(d['video'])
+        with add_path(os.path.join(os.environ['OPENPOSE_PATH'], 'build/python')):
+            from pose_pipeline.wrappers.openpose import openpose_parse_video
+            res = openpose_parse_video(d['video'])
 
         key['keypoints'] = [r['keypoints'] for r in res]
         key['pose_ids'] = [r['pose_ids'] for r in res]
@@ -166,7 +168,8 @@ class TrackingBbox(dj.Computed):
         self.insert1(key)
 
         # remove the downloaded video to avoid clutter
-        os.remove(d['video'])
+        if os.path.exists(d['video']):
+            os.remove(d['video'])
 
 
 @schema
@@ -344,13 +347,12 @@ class CenterHMR(dj.Computed):
 
     def make(self, key):
 
-        from pose_pipeline.wrappers.centerhmr import parse_video
+        with add_path([os.path.join(os.environ['CENTERHMR_PATH'], 'src'), 
+                       os.path.join(os.environ['CENTERHMR_PATH'], 'src/core')]):
+            from pose_pipeline.wrappers.centerhmr import centerhmr_parse_video
 
-        video = (Video & key).fetch1('video')
-        
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
-
-        res = parse_video(video, out_file_name)
+            video = (Video & key).fetch1('video')
+            res = centerhmr_parse_video(video, os.environ['CENTERHMR_PATH'])
 
         # don't store verticies or images
         keys_to_keep = ['params',  'pj2d', 'j3d', 'j3d_smpl24', 'j3d_spin24', 'j3d_op25']
@@ -360,7 +362,6 @@ class CenterHMR(dj.Computed):
         self.insert1(key)
 
         # not saving the video in database, just to reduce space requirements
-        os.remove(out_file_name)
         os.remove(video)
 
 
@@ -431,11 +432,6 @@ class CenterHMRPersonVideo(dj.Computed):
     '''
 
     def make(self, key):
-
-        import platform
-        if 'Ubuntu' in platform.version():
-            # In Ubuntu, using osmesa mode for rendering
-            os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
             
         from pose_estimation.util.pyrender_renderer import PyrendererRenderer
         from pose_estimation.body_models.smpl import SMPL
@@ -552,6 +548,8 @@ class ExposePerson(dj.Computed):
     definition = '''
     -> PersonBbox
     ---
+    poses          : longblob
+    joints         : longblob
     results        : longblob
     '''
 
@@ -561,16 +559,29 @@ class ExposePerson(dj.Computed):
         sys.path.append(os.environ['EXPOSE_PATH'])
         exp_cfg = os.path.join(os.environ['EXPOSE_PATH'], 'data/conf.yaml')
 
-        from pose_pipeline.wrappers.expose import expose_parse_video
+        with add_path(os.environ['EXPOSE_PATH']):
+            from pose_pipeline.wrappers.expose import expose_parse_video
 
-        video = (Video & key).fetch1('video')
-        bboxes, present = (PersonBbox & key).fetch1('bbox', 'present')
+            video = (Video & key).fetch1('video')
+            bboxes, present = (PersonBbox & key).fetch1('bbox', 'present')
 
-        key['results'] = expose_parse_video(video, bboxes, present, exp_cfg)
+            results = expose_parse_video(video, bboxes, present, exp_cfg)
+            key['results'] = results
+            key['results'].pop('initial_params')
+            key['joints'] = np.asarray([r['joints'] for r in results['final_params']])
+
+            from scipy.spatial.transform import Rotation as R
+            key['poses'] = np.asarray([R.from_matrix(r['body_pose']).as_rotvec()
+                                      for r in results['final_params']])
 
         self.insert1(key)
 
         os.remove(video)
+
+    @staticmethod
+    def joints_names():
+            from smplx.joint_names import JOINT_NAMES
+            return JOINT_NAMES
 
 @schema
 class ExposePersonVideo(dj.Computed):
@@ -582,20 +593,20 @@ class ExposePersonVideo(dj.Computed):
 
     def make(self, key):
 
-        sys.path.append(os.environ['EXPOSE_PATH'])
+        with add_path(os.environ['EXPOSE_PATH']):
+            from pose_pipeline.wrappers.expose import ExposeVideoWriter
+            from pose_pipeline.utils.visualization import video_overlay
 
-        from pose_pipeline.wrappers.expose import ExposeVideoWriter
-        from pose_pipeline.utils.visualization import video_overlay
+            # fetch data
+            video = (BlurredVideo & key).fetch1('output_video')
+            results = (ExposePerson & key).fetch1('results')
 
-        # fetch data
-        video = (BlurredVideo & key).fetch1('output_video')
-        results = (ExposePerson & key).fetch1('results')
+            vw = ExposeVideoWriter(results)
+            overlay_fn = vw.get_overlay_fn()
 
-        vw = ExposeVideoWriter(results)
-        overlay_fn = vw.get_overlay_fn()
+            _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+            video_overlay(video, out_file_name, overlay_fn, downsample=4)
 
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
-        video_overlay(video, out_file_name, overlay_fn, downsample=4)
         key['output_video'] = out_file_name
 
         self.insert1(key)

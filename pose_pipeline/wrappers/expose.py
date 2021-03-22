@@ -88,7 +88,7 @@ def cpu(tensor):
     return tensor.cpu().detach().numpy()
 
 
-def expose_parse_video(video, bboxes, present, config_file, device=torch.device('cuda'), batch_size=64):
+def expose_parse_video(video, bboxes, present, config_file, device=torch.device('cuda'), batch_size=16):
 
     logger.remove()
 
