@@ -27,6 +27,7 @@ def set_environmental_variables():
     os.environ['OPENPOSE_PYTHON_PATH'] = '/home/jcotton/projects/pose/openpose/build/python'
     os.environ['EXPOSE_PATH'] = '/home/jcotton/projects/pose/expose'
     os.environ['CENTERHMR_PATH'] = '/home/jcotton/projects/pose/CenterHMR'
+    os.environ["GAST_PATH"] = '/home/jcotton/projects/pose/GAST-Net-3DPoseEstimation'
 
     import platform
     if 'Ubuntu' in platform.version():

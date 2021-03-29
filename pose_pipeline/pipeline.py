@@ -660,6 +660,7 @@ class MMPoseTopDownPerson(dj.Computed):
 class MMPoseTopDownPersonVideo(dj.Computed):
     definition = """
     -> MMPoseTopDownPerson
+    -> BlurredVideo
     ---
     output_video      : attach@localattach    # datajoint managed video file
     """
@@ -683,4 +684,127 @@ class MMPoseTopDownPersonVideo(dj.Computed):
         self.insert1(key)
 
         os.remove(out_file_name)
-        os.remove(video)        
+        os.remove(video)
+
+@schema
+class GastNetPerson(dj.Computed):
+    definition = """
+    -> MMPoseTopDownPerson
+    ---
+    keypoints_3d       : longblob
+    """
+
+    def make(self, key):
+
+        keypoints = (MMPoseTopDownPerson & key).fetch1('keypoints')
+        height, width = (VideoInfo & key).fetch1('height', 'width')
+
+        gastnet_files = os.path.join(os.path.split(__file__)[0], '../3rdparty/gastnet/')
+
+        with add_path(os.environ["GAST_PATH"]):
+
+            import torch
+            from model.gast_net import SpatioTemporalModel, SpatioTemporalModelOptimized1f
+            from common.graph_utils import adj_mx_from_skeleton
+            from common.skeleton import Skeleton
+            from tools.inference import gen_pose
+            from tools.preprocess import h36m_coco_format, revise_kpts
+
+            def gast_load_model(rf=27):
+                if rf == 27:
+                    chk = gastnet_files + '27_frame_model.bin'
+                    filters_width = [3, 3, 3]
+                    channels = 128
+                elif rf == 81:
+                    chk = gastnet_files + '81_frame_model.bin'
+                    filters_width = [3, 3, 3, 3]
+                    channels = 64
+                else:
+                    raise ValueError('Only support 27 and 81 receptive field models for inference!')
+                    
+                skeleton = Skeleton(parents=[-1, 0, 1, 2, 0, 4, 5, 0, 7, 8, 9, 8, 11, 12, 8, 14, 15],
+                                    joints_left=[6, 7, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22, 23],
+                                    joints_right=[1, 2, 3, 4, 5, 24, 25, 26, 27, 28, 29, 30, 31])
+                adj = adj_mx_from_skeleton(skeleton)
+
+                model_pos = SpatioTemporalModel(adj, 17, 2, 17, filter_widths=filters_width, channels=channels, dropout=0.05)
+                
+                checkpoint = torch.load(chk)
+                model_pos.load_state_dict(checkpoint['model_pos'])
+                
+                if torch.cuda.is_available():
+                    model_pos = model_pos.cuda()
+                model_pos.eval()
+
+                return model_pos
+
+            keypoints_reformat, keypoints_score = keypoints[None, ..., :2], keypoints[None, ..., 2]
+            keypoints, scores, valid_frames = h36m_coco_format(keypoints_reformat, keypoints_score)
+
+            re_kpts = revise_kpts(keypoints, scores, valid_frames)
+            assert len(re_kpts) == 1
+
+            rf = 27
+            model_pos = gast_load_model(rf)
+
+            pad = (rf - 1) // 2  # Padding on each side
+            causal_shift = 0
+
+            # Generating 3D poses
+            prediction = gen_pose(re_kpts, valid_frames, width, height, model_pos, pad, causal_shift)
+
+        key['keypoints_3d'] = prediction[0]
+        self.insert1(key)
+
+@schema
+class GastNetPersonVideo(dj.Computed):
+    definition = """
+    -> GastNetPerson
+    -> BlurredVideo
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    """
+    
+    def make(self, key):
+
+        keypoints = (MMPoseTopDownPerson & key).fetch1('keypoints')
+        keypoints_3d = (GastNetPerson & key).fetch1('keypoints_3d').copy()
+        blurred_video = (BlurredVideo & key).fetch1('output_video')
+        width, height, fps = (VideoInfo & key).fetch1('width', 'height', 'fps')
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+
+        with add_path(os.environ["GAST_PATH"]):
+
+            from common.graph_utils import adj_mx_from_skeleton
+            from common.skeleton import Skeleton
+            from tools.inference import gen_pose
+            from tools.preprocess import h36m_coco_format, revise_kpts
+
+            from tools.vis_h36m import render_animation
+
+            skeleton = Skeleton(parents=[-1, 0, 1, 2, 0, 4, 5, 0, 7, 8, 9, 8, 11, 12, 8, 14, 15],
+                                joints_left=[6, 7, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22, 23],
+                                joints_right=[1, 2, 3, 4, 5, 24, 25, 26, 27, 28, 29, 30, 31])
+            adj = adj_mx_from_skeleton(skeleton)
+
+            joints_left, joints_right = [4, 5, 6, 11, 12, 13], [1, 2, 3, 14, 15, 16]
+            kps_left, kps_right = [4, 5, 6, 11, 12, 13], [1, 2, 3, 14, 15, 16]
+            rot = np.array([0.14070565, -0.15007018, -0.7552408, 0.62232804], dtype=np.float32)
+            keypoints_metadata = {'keypoints_symmetry': (joints_left, joints_right), 'layout_name': 'Human3.6M', 'num_joints': 17}
+
+            keypoints_reformat, keypoints_score = keypoints[None, ..., :2], keypoints[None, ..., 2]
+            keypoints, scores, valid_frames = h36m_coco_format(keypoints_reformat, keypoints_score)
+            re_kpts = revise_kpts(keypoints, scores, valid_frames)
+            re_kpts = re_kpts.transpose(1, 0, 2, 3)
+
+            keypoints_3d[:, :, 2] -= np.amin(keypoints_3d[:, :, 2])
+            anim_output = {'Reconstruction 1': keypoints_3d}
+
+            render_animation(re_kpts, keypoints_metadata, anim_output, skeleton, fps, 30000, np.array(70., dtype=np.float32),
+                            out_file_name, input_video_path=blurred_video, viewport=(width, height), com_reconstrcution=False)
+
+        key['output_video'] = out_file_name
+        self.insert1(key)
+
+        os.remove(blurred_video)
+        os.remove(out_file_name)
