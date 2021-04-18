@@ -548,9 +548,6 @@ class PoseWarperPersonVideo(dj.Computed):
 
         return out_file_name
 
-        
-
-
 @schema
 class ExposePerson(dj.Computed):
     definition = '''
@@ -921,3 +918,165 @@ class PoseFormerPerson(dj.Computed):
     def joint_names():
         """ PoseFormer follows the output format of Video3D and uses Human3.6 ordering """
         return ['Hip (root)', 'Right hip', 'Right knee', 'Right foot', 'Left hip', 'Left knee', 'Left foot', 'Spine', 'Thorax', 'Nose', 'Head', 'Left shoulder', 'Left elbow', 'Left wrist', 'Right shoulder', 'Right elbow', 'Right wrist']
+
+
+def get_person_dataloader(key):
+
+    from torch.utils.data import Dataset
+    from torch.utils.data import DataLoader
+    import torchvision.transforms as transforms
+
+    from pose_pipeline.utils.bounding_box import crop_image_bbox
+
+    video, tracks, keep_tracks = (Video * TrackingBbox * PersonBboxValid & key).fetch1('video', 'tracks', 'keep_tracks')
+
+    cap = cv2.VideoCapture(video)
+
+    frames = []
+    bboxes = []
+    frame_ids = []
+    for i, idx in enumerate(range(len(tracks))):
+        bbox = [t['tlwh'] for t in tracks[idx] if t['track_id'] in keep_tracks]
+
+        # handle the case where person is not tracked in frame
+        if len(bbox) == 0:
+            continue
+
+        # should match the length of identified person tracks
+        ret, frame = cap.read()
+        assert ret and frame is not None
+
+        frames.append(frame)
+        bboxes.append(bbox)
+        frame_ids.append(idx)
+
+
+    class Inference(Dataset):
+        def __init__(self, frames, bboxes=None, joints2d=None, scale=1.0, crop_size=224):
+
+            self.frames = frames
+            self.bboxes = bboxes
+            self.joints2d = joints2d
+            self.scale = scale
+            self.crop_size = crop_size
+            self.frames = frames
+            self.has_keypoints = True if joints2d is not None else False
+
+            def get_default_transform():
+                normalize = transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                )
+                transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    normalize,
+                ])
+                return transform
+
+            self.transform = get_default_transform()
+            self.norm_joints2d = np.zeros_like(self.joints2d)
+
+            if self.has_keypoints:
+                bboxes, time_pt1, time_pt2 = get_all_bbox_params(joints2d, vis_thresh=0.3)
+                bboxes[:, 2:] = 150. / bboxes[:, 2:]
+                self.bboxes = np.stack([bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 2]]).T
+
+                self.image_file_names = self.image_file_names[time_pt1:time_pt2]
+                self.joints2d = joints2d[time_pt1:time_pt2]
+                self.frames = frames[time_pt1:time_pt2]
+
+        def __len__(self):
+            return len(self.frames)
+
+        def __getitem__(self, idx):
+
+            img = cv2.cvtColor(self.frames[idx], cv2.COLOR_BGR2RGB)
+            bbox = self.bboxes[idx][0]
+            j2d = self.joints2d[idx] if self.has_keypoints else None
+
+            norm_img = crop_image_bbox(img, bbox, target_size=(self.crop_size, self.crop_size), dilate=self.scale)[0]
+            norm_img = self.transform(norm_img)
+
+            if self.has_keypoints:
+                return norm_img, kp_2d
+            else:
+                return norm_img
+
+    dataset = Inference(frames, bboxes)
+    dataloader = DataLoader(dataset, batch_size=32, num_workers=16)
+    
+    return frame_ids, dataloader
+
+@schema
+class VIBEPerson(dj.Computed):
+    definition = '''
+    -> PersonBbox
+    ---
+    cams            : longblob
+    poses           : longblob
+    betas           : longblob
+    verts           : longblob
+    joints3d        : longblob
+    joints2d        : longblob
+    '''
+
+    def make(self, key):
+        
+        spin_checkpoint = os.path.join(os.path.split(__file__)[0], '../3rdparty/vibe/spin_model_checkpoint.pth.tar')
+        vibe_checkpoint = os.path.join(os.path.split(__file__)[0], '../3rdparty/vibe/vibe_model_w_3dpw.pth.tar')
+
+        with add_path(os.environ['VIBE_PATH']):
+            frame_ids, dataloader = get_person_dataloader(key)
+
+            import torch
+            from lib.models.vibe import VIBE_Demo
+
+            device = 'cuda'
+            has_keypoints = False
+            model = VIBE_Demo(
+                seqlen=16,
+                n_layers=2,
+                hidden_size=1024,
+                add_linear=True,
+                use_residual=True,
+                pretrained=spin_checkpoint
+            ).to('cuda')
+
+            ckpt = torch.load(vibe_checkpoint)
+            ckpt = ckpt['gen_state_dict']
+            model.load_state_dict(ckpt, strict=False)
+            model.eval()
+
+            with torch.no_grad():
+                pred_cam, pred_verts, pred_pose, pred_betas, pred_joints3d, smpl_joints2d, norm_joints2d = [], [], [], [], [], [], []
+
+                for batch in dataloader:
+                    if has_keypoints:
+                        batch, nj2d = batch
+                        norm_joints2d.append(nj2d.numpy().reshape(-1, 21, 3))
+
+                    batch = batch.unsqueeze(0)
+                    batch = batch.to(device)
+
+                    batch_size, seqlen = batch.shape[:2]
+                    output = model(batch)[-1]
+                    
+                    pred_cam.append(output['theta'][:, :, :3].reshape(batch_size * seqlen, -1).cpu().detach().numpy())
+                    pred_verts.append(output['verts'].reshape(batch_size * seqlen, -1, 3).cpu().detach().numpy())
+                    pred_pose.append(output['theta'][:,:,3:75].reshape(batch_size * seqlen, -1).cpu().detach().numpy())
+                    pred_betas.append(output['theta'][:, :,75:].reshape(batch_size * seqlen, -1).cpu().detach().numpy())
+                    pred_joints3d.append(output['kp_3d'].reshape(batch_size * seqlen, -1, 3).cpu().detach().numpy())
+                    smpl_joints2d.append(output['kp_2d'].reshape(batch_size * seqlen, -1, 2).cpu().detach().numpy())
+  
+            key['cams'] = np.concatenate(pred_cam, axis=0)
+            key['verts'] = np.concatenate(pred_verts, axis=0)
+            key['poses'] = np.concatenate(pred_pose, axis=0)
+            key['betas'] = np.concatenate(pred_betas, axis=0)
+            key['joints3d'] = np.concatenate(pred_joints3d, axis=0)
+            key['joints2d'] = np.concatenate(smpl_joints2d, axis=0)
+
+            self.insert1(key)
+
+    @staticmethod
+    def joint_names():
+            from smplx.joint_names import JOINT_NAMES
+            return JOINT_NAMES[:23]

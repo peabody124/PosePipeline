@@ -29,6 +29,7 @@ def set_environmental_variables():
     os.environ['CENTERHMR_PATH'] = '/home/jcotton/projects/pose/CenterHMR'
     os.environ["GAST_PATH"] = '/home/jcotton/projects/pose/GAST-Net-3DPoseEstimation'
     os.environ["POSEFORMER_PATH"] = '/home/jcotton/projects/pose/PoseFormer'
+    os.environ["VIBE_PATH"] = '/home/jcotton/projects/pose/VIBE'
 
     import platform
     if 'Ubuntu' in platform.version():
