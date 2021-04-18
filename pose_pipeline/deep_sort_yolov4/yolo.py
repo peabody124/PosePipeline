@@ -7,8 +7,8 @@ import colorsys
 import tensorflow as tf
 from tensorflow.compat.v1.keras import backend as K
 import numpy as np
-from keras import backend as K
-from keras.models import load_model
+from tensorflow.keras import backend as K
+from tensorflow.keras.models import load_model
 
 from .yolo4.model import yolo_eval, Mish
 from .yolo4.utils import letterbox_image

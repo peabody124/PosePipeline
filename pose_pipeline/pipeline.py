@@ -50,10 +50,11 @@ class VideoInfo(dj.Computed):
     -> Video
     ---
     timestamps      : longblob
+    delta_time      : longblob
     fps             : float
     height          : int
     width           : int
-    frames          : int
+    num_frames      : int
     '''
 
     def make(self, key):
@@ -62,11 +63,11 @@ class VideoInfo(dj.Computed):
 
         cap = cv2.VideoCapture(video)
         key['fps'] = fps = cap.get(cv2.CAP_PROP_FPS)
-        key['frames'] = frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        key['num_frames'] = frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         key['width'] = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         key['height'] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         key['timestamps'] = [start_time + timedelta(0, i / fps) for i in range(frames)]
-
+        key['delta_time'] = [timedelta(0, i / fps).total_seconds() for i in range(frames)]
         self.insert1(key)
 
         os.remove(video)
@@ -421,6 +422,11 @@ class CenterHMRPerson(dj.Computed):
 
         self.insert1(key)
 
+    @staticmethod
+    def joint_names():
+        from smplx.joint_names import JOINT_NAMES
+        return JOINT_NAMES[:23]
+
 
 @schema
 class CenterHMRPersonVideo(dj.Computed):
@@ -542,6 +548,8 @@ class PoseWarperPersonVideo(dj.Computed):
 
         return out_file_name
 
+        
+
 
 @schema
 class ExposePerson(dj.Computed):
@@ -579,7 +587,7 @@ class ExposePerson(dj.Computed):
         os.remove(video)
 
     @staticmethod
-    def joints_names():
+    def joint_names():
             from smplx.joint_names import JOINT_NAMES
             return JOINT_NAMES
 
@@ -639,15 +647,21 @@ class MMPoseTopDownPerson(dj.Computed):
 
         results = []
         for idx in tqdm(range(len(tracks))):
-            bbox = [t['tlwh'] for t in tracks[idx] if t['track_id'] in keep_tracks][0]
-            bbox_wrap = {'bbox': bbox}
-            
+            bbox = [t['tlwh'] for t in tracks[idx] if t['track_id'] in keep_tracks]
+
+            # handle the case where person is not tracked in frame
+            if len(bbox) == 0:
+                results.append(np.zeros((17, 3)))
+                continue
+
+            # should match the length of identified person tracks
             ret, frame = cap.read()
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            assert ret and frame is not None
+
+            bbox_wrap = {'bbox': bbox[0]}
             
-            if bbox[2] == 0 or bbox[3] == 0 or not ret or frame is None:
-                results.append(np.zeros(17, 3))
-                
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            
             res = inference_top_down_pose_model(model, frame, [bbox_wrap])[0]
             results.append(res[0]['keypoints'])
 
@@ -755,6 +769,11 @@ class GastNetPerson(dj.Computed):
 
         key['keypoints_3d'] = prediction[0]
         self.insert1(key)
+
+    @staticmethod
+    def joint_names():
+        """ GAST-Net 3D follows the output format of Video3D and uses Human3.6 ordering """
+        return ['Hip (root)', 'Right hip', 'Right knee', 'Right foot', 'Left hip', 'Left knee', 'Left foot', 'Spine', 'Thorax', 'Nose', 'Head', 'Left shoulder', 'Left elbow', 'Left wrist', 'Right shoulder', 'Right elbow', 'Right wrist']
 
 @schema
 class GastNetPersonVideo(dj.Computed):

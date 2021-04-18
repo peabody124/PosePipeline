@@ -4,13 +4,10 @@ from functools import wraps
 
 import numpy as np
 import tensorflow as tf
-from keras import backend as K
-from keras.engine.base_layer import Layer
-from keras.layers import Conv2D, Add, ZeroPadding2D, UpSampling2D, Concatenate, MaxPooling2D
-from keras.layers.advanced_activations import LeakyReLU
-from keras.layers.normalization import BatchNormalization
-from keras.models import Model
-from keras.regularizers import l2
+from tensorflow.keras import backend as K
+from tensorflow.keras.layers import Layer, Conv2D, Add, ZeroPadding2D, UpSampling2D, Concatenate, MaxPooling2D, BatchNormalization, LeakyReLU
+from tensorflow.keras.models import Model
+from tensorflow.keras.regularizers import l2
 
 from .utils import compose
 
