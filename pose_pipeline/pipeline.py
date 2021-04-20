@@ -157,12 +157,12 @@ class TrackingBbox(dj.Computed):
     '''
 
     def make(self, key):
-        from pose_pipeline.deep_sort_yolov4.parser import tracking_bounding_boxes
+        from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
 
         print(f"Populating {key['filename']}")
         d = (Video & key).fetch1()
 
-        tracks = tracking_bounding_boxes(d['video'])
+        tracks = mmtrack_bounding_boxes(d['video'])
 
         key['tracks'] = tracks
 
@@ -184,28 +184,39 @@ class TrackingBboxVideo(dj.Computed):
 
     def make(self, key):
 
+        import matplotlib
         from pose_pipeline.utils.visualization import video_overlay
+
+        video = (BlurredVideo & key).fetch1('output_video')
+        tracks = (TrackingBbox & key).fetch1('tracks')
+
+        N = len(np.unique([t['track_id'] for track in tracks for t in track]))
+        colors = matplotlib.cm.get_cmap('hsv', lut=N)
         
         def overlay_callback(image, idx):    
             image = image.copy()
             
             for track in tracks[idx]:
+                c = colors(track['track_id'])
+                c = (int(c[0] * 255.0), int(c[1] * 255.0), int(c[2] * 255.0))
+                if idx == 0:
+                    print(track['track_id'], c)
+
                 bbox = track['tlbr']
                 cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), 6)
-                cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 0, 255), 3)
+                cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), c, 3)
                 
-                x = int((bbox[0] + bbox[2]) / 2-150)
-                y = int((bbox[3] + bbox[1]) / 2)
-                cv2.putText(image, "ID: " + str(track['track_id']), (x, y), 0, 2.0e-3 * image.shape[0], (0, 0, 0), thickness=15)
-                cv2.putText(image, "ID: " + str(track['track_id']), (x, y), 0, 2.0e-3 * image.shape[0], (255, 255, 255), thickness=10)
+                label = str(track['track_id'])
+                textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
+                x = int((bbox[0] + bbox[2]) / 2 - textsize[0] / 2)
+                y = int((bbox[3] + bbox[1]) / 2 + textsize[1] / 2)
+                cv2.putText(image, label, (x, y), 0, 2.0e-3 * image.shape[0], (255, 255, 255), thickness=4)
+                cv2.putText(image, label, (x, y), 0, 2.0e-3 * image.shape[0], c, thickness=2)
 
             return image
 
-        video = (BlurredVideo & key).fetch1('output_video')
-        tracks = (TrackingBbox & key).fetch1('tracks')
-
         _, fname = tempfile.mkstemp(suffix='.mp4')
-        video_overlay(video, fname, overlay_callback, downsample=4)
+        video_overlay(video, fname, overlay_callback, downsample=1)
 
         key['output_video'] = fname
 
