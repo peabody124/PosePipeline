@@ -106,6 +106,50 @@ class OpenPose(dj.Computed):
 
 
 @schema
+class MMPoseBottomUpPerson(dj.Computed):
+    definition = """
+    -> Video
+    ---
+    keypoints          : longblob
+    """
+
+    def make(self, key):
+        
+        from mmpose.apis import init_pose_model, inference_bottom_up_pose_model
+        from tqdm import tqdm
+
+        mmpose_files = os.path.join(os.path.split(__file__)[0], '../3rdparty/mmpose/')
+        pose_cfg = os.path.join(mmpose_files, 'config/bottom_up/higherhrnet/coco/higher_hrnet48_coco_512x512.py')
+        pose_ckpt = os.path.join(mmpose_files, 'checkpoints/higher_hrnet48_coco_512x512-60fedcbc_20200712.pth')
+
+        model = init_pose_model(pose_cfg, pose_ckpt)
+
+        video = (Video & key).fetch1('video')
+        cap = cv2.VideoCapture(video)
+
+        video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        keypoints = []
+        for frame_id in tqdm(range(video_length)):
+
+            # should match the length of identified person tracks
+            ret, frame = cap.read()
+            assert ret and frame is not None
+            
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            
+            res = inference_bottom_up_pose_model(model, frame)[0]
+
+            kps = np.stack([x['keypoints'] for x in res], axis=0)
+            keypoints.append(kps)
+
+        key['keypoints'] = keypoints
+
+        os.remove(video)
+        self.insert1(key)
+
+
+@schema
 class BlurredVideo(dj.Computed):
     definition = '''
     -> Video
