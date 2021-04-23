@@ -193,14 +193,26 @@ class BlurredVideo(dj.Computed):
 
 
 @schema
-class TrackingBbox(dj.Computed):
+class TrackingBboxMethod(dj.Manual):
     definition = '''
     -> Video
+    tracking_method   : int
+    ---
+    '''
+
+@schema
+class TrackingBbox(dj.Computed):
+    definition = '''
+    -> TrackingBboxMethod
     ---
     tracks            : longblob
+    num_tracks        : int
     '''
 
     def make(self, key):
+
+        assert False, "Need to properly handle tracking method"
+
         from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
 
         print(f"Populating {key['filename']}")
@@ -243,8 +255,6 @@ class TrackingBboxVideo(dj.Computed):
             for track in tracks[idx]:
                 c = colors(track['track_id'])
                 c = (int(c[0] * 255.0), int(c[1] * 255.0), int(c[2] * 255.0))
-                if idx == 0:
-                    print(track['track_id'], c)
 
                 bbox = track['tlbr']
                 cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), 6)
@@ -300,7 +310,7 @@ class PersonBbox(dj.Computed):
             def process_timestamp(track_timestep):
                 valid = [t for t in track_timestep if t['track_id'] in keep_tracks]
                 if len(valid) == 1:
-                    return {'present': True, 'bbox': valid[0]['tlwh']}
+                    return {'present': True, 'bbox': valid[0]['tlhw']}
                 else:
                     return {'present': False, 'bbox': [0.0, 0.0, 0.0, 0.0]}
                 
@@ -391,6 +401,34 @@ class OpenPosePersonVideo(dj.Computed):
 
         os.remove(out_file_name)
         os.remove(video)
+
+
+@schema
+class TopDownMethod(dj.Manual):
+    definition = '''
+    -> PersonBbox
+    top_down_method    : int
+    '''
+
+
+@schema
+class TopDownPerson(dj.Computed):
+    definition = '''
+    -> TopDownMethod
+    ---
+    keypoints          : longblob
+    '''
+
+    def make(self, key):
+
+        if key['top_down_method'] == 0:
+            from .wrappers.top_down import mmpose_top_down_person
+            key['keypoints'] = mmpose_top_down_person(key)
+
+        else:
+            raise Exception("Method not implemented")
+
+        self.insert1(key)
 
 
 @schema
@@ -674,53 +712,6 @@ class ExposePersonVideo(dj.Computed):
         os.remove(out_file_name)
         os.remove(video)
 
-@schema
-class MMPoseTopDownPerson(dj.Computed):
-    definition = """
-    -> PersonBbox
-    ---
-    keypoints          : longblob
-    """
-
-    def make(self, key):
-        
-        from mmpose.apis import init_pose_model, inference_top_down_pose_model
-        from tqdm import tqdm
-
-        mmpose_files = os.path.join(os.path.split(__file__)[0], '../3rdparty/mmpose/')
-        pose_cfg = os.path.join(mmpose_files, 'config/top_down/darkpose/coco/hrnet_w48_coco_384x288_dark.py')
-        pose_ckpt = os.path.join(mmpose_files, 'checkpoints/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth')
-
-        video, tracks, keep_tracks = (Video * TrackingBbox * PersonBboxValid & key).fetch1('video', 'tracks', 'keep_tracks')
-
-        model = init_pose_model(pose_cfg, pose_ckpt)
-
-        cap = cv2.VideoCapture(video)
-
-        results = []
-        for idx in tqdm(range(len(tracks))):
-            bbox = [t['tlwh'] for t in tracks[idx] if t['track_id'] in keep_tracks]
-
-            # handle the case where person is not tracked in frame
-            if len(bbox) == 0:
-                results.append(np.zeros((17, 3)))
-                continue
-
-            # should match the length of identified person tracks
-            ret, frame = cap.read()
-            assert ret and frame is not None
-
-            bbox_wrap = {'bbox': bbox[0]}
-            
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                            
-            res = inference_top_down_pose_model(model, frame, [bbox_wrap])[0]
-            results.append(res[0]['keypoints'])
-
-        key['keypoints'] = np.asarray(results)
-
-        os.remove(video)
-        self.insert1(key)
 
 @schema
 class MMPoseTopDownPersonVideo(dj.Computed):
@@ -991,7 +982,7 @@ def get_person_dataloader(key):
     bboxes = []
     frame_ids = []
     for i, idx in enumerate(range(len(tracks))):
-        bbox = [t['tlwh'] for t in tracks[idx] if t['track_id'] in keep_tracks]
+        bbox = [t['tlhw'] for t in tracks[idx] if t['track_id'] in keep_tracks]
 
         # handle the case where person is not tracked in frame
         if len(bbox) == 0:
@@ -1207,6 +1198,9 @@ class MEVAPerson(dj.Computed):
             key['joints2d'] = np.concatenate(norm_joints2d, axis=0)
 
             self.insert1(key)
+
+            video = (Video & key).fetch1('video')
+            os.remove(video)
 
     @staticmethod
     def joint_names():
