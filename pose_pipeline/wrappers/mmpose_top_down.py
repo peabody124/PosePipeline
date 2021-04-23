@@ -1,6 +1,9 @@
-
+import os
+import cv2
+import numpy as np
+from tqdm import tqdm
 import datajoint as dj
-from .pipeline import *
+from pose_pipeline import Video, TrackingBbox, PersonBboxValid
 
 
 def mmpose_top_down_person(key):
@@ -8,9 +11,9 @@ def mmpose_top_down_person(key):
     from mmpose.apis import init_pose_model, inference_top_down_pose_model
     from tqdm import tqdm
 
-    mmpose_files = os.path.join(os.path.split(__file__)[0], '../3rdparty/mmpose/')
-    pose_cfg = os.path.join(mmpose_files, 'config/top_down/darkpose/coco/hrnet_w48_coco_384x288_dark.py')
-    pose_ckpt = os.path.join(mmpose_files, 'checkpoints/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth')
+    from pose_pipeline import MODEL_DATA_DIR
+    pose_cfg = os.path.join(MODEL_DATA_DIR, 'mmpose/config/top_down/darkpose/coco/hrnet_w48_coco_384x288_dark.py')
+    pose_ckpt = os.path.join(MODEL_DATA_DIR, 'mmpose/checkpoints/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth')
 
     video, tracks, keep_tracks = (Video * TrackingBbox * PersonBboxValid & key).fetch1('video', 'tracks', 'keep_tracks')
 
@@ -20,7 +23,7 @@ def mmpose_top_down_person(key):
 
     results = []
     for idx in tqdm(range(len(tracks))):
-        bbox = [t['tlhw'] if 'tlhw' in t.keys() else t['tlwh'] for t in tracks[idx] if t['track_id'] in keep_tracks]
+        bbox = [t['tlhw'] for t in tracks[idx] if t['track_id'] in keep_tracks]
 
         # handle the case where person is not tracked in frame
         if len(bbox) == 0:

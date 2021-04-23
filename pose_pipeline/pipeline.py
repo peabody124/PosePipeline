@@ -229,7 +229,7 @@ class TrackingBbox(dj.Computed):
 
         track_ids = np.unique([t['track_id'] for track in tracks for t in track])
         key['num_tracks'] = len(track_ids)
-        
+
         self.insert1(key)
 
         # remove the downloaded video to avoid clutter
@@ -430,7 +430,7 @@ class TopDownPerson(dj.Computed):
     def make(self, key):
 
         if key['top_down_method'] == 0:
-            from .wrappers.top_down import mmpose_top_down_person
+            from .wrappers.mmpose_top_down import mmpose_top_down_person
             key['keypoints'] = mmpose_top_down_person(key)
 
         else:
