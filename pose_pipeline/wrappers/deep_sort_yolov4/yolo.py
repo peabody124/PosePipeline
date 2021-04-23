@@ -17,11 +17,12 @@ import os
 class YOLO(object):
     def __init__(self):
 
-        fpath = os.path.split(__file__)[0]
+        from pose_pipeline import MODEL_DATA_DIR
 
-        self.model_path = os.path.join(fpath, 'model_data/yolo4.h5')
-        self.anchors_path = os.path.join(fpath, 'model_data/yolo_anchors.txt')
-        self.classes_path = os.path.join(fpath, 'model_data/coco_classes.txt')
+        self.model_path = os.path.join(MODEL_DATA_DIR, 'deep_sort_yolov4/yolo4.h5')
+        self.anchors_path = os.path.join(MODEL_DATA_DIR, 'deep_sort_yolov4/yolo_anchors.txt')
+        self.classes_path = os.path.join(MODEL_DATA_DIR, 'deep_sort_yolov4/coco_classes.txt')
+
         self.gpu_num = 1
         self.score = 0.5
         self.iou = 0.5

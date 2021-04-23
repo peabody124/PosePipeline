@@ -4,11 +4,10 @@ import numpy as np
 from tqdm import tqdm
 import mmtrack.apis
 
-MMTRACK_DIR = os.path.join(os.path.split(__file__)[0], '../../3rdparty/mmtracking')
-
 def mmtrack_bounding_boxes(file_path):
     
-    model_config = os.path.join(MMTRACK_DIR, 'mot/tracktor/tracktor_faster-rcnn_r50_fpn_4e_mot17-private.py')
+    from pose_pipeline import MODEL_DATA_DIR
+    model_config = os.path.join(MODEL_DATA_DIR, 'mmtracking/mot/tracktor/tracktor_faster-rcnn_r50_fpn_4e_mot17-private.py')
     
     model = mmtrack.apis.init_model(model_config)
 

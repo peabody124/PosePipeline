@@ -211,22 +211,30 @@ class TrackingBbox(dj.Computed):
 
     def make(self, key):
 
-        assert False, "Need to properly handle tracking method"
+        video = (Video & key).fetch1('video')
 
-        from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
+        if key['tracking_method'] == 0:
+            from pose_pipeline.wrappers.deep_sort_yolov4.parser import tracking_bounding_boxes
+            tracks = tracking_bounding_boxes(video)
+            key['tracks'] = tracks
 
-        print(f"Populating {key['filename']}")
-        d = (Video & key).fetch1()
+        elif key['tracking_method'] == 1:
+            from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
+            tracks = mmtrack_bounding_boxes(video)
+            key['tracks'] = tracks
 
-        tracks = mmtrack_bounding_boxes(d['video'])
+        else:
+            os.remove(video)
+            raise Exception("Unsupported tracking method: {key['tracking_method']")
 
-        key['tracks'] = tracks
-
+        track_ids = np.unique([t['track_id'] for track in tracks for t in track])
+        key['num_tracks'] = len(track_ids)
+        
         self.insert1(key)
 
         # remove the downloaded video to avoid clutter
-        if os.path.exists(d['video']):
-            os.remove(d['video'])
+        if os.path.exists(video):
+            os.remove(video)
 
 
 @schema

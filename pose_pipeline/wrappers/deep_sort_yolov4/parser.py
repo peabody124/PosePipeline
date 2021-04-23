@@ -38,8 +38,9 @@ def tracking_bounding_boxes(file_path, outfile=None):
     nms_max_overlap = 1.0
     
     # Deep SORT
-    fpath = os.path.split(__file__)[0]
-    model_filename = os.path.join(fpath, 'model_data/mars-small128.pb')
+    from pose_pipeline import MODEL_DATA_DIR
+
+    model_filename = os.path.join(MODEL_DATA_DIR, 'deep_sort_yolov4/mars-small128.pb')
     encoder = gdet.create_box_encoder(model_filename, batch_size=1)
     
     metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
@@ -70,7 +71,7 @@ def tracking_bounding_boxes(file_path, outfile=None):
         tracker.predict()
         tracker.update(detections)
 
-        tracks.append([{'track_id': t.track_id, 'tlwh': t.to_tlwh(), 'tlbr': t.to_tlbr(), 
+        tracks.append([{'track_id': t.track_id, 'tlhw': t.to_tlwh(), 'tlbr': t.to_tlbr(), 
                         'time_since_update': t.time_since_update} 
                        for t in tracker.tracks])
 

@@ -1,3 +1,4 @@
+import os
 
 from .pipeline import (schema, Video, VideoInfo, TrackingBboxMethod, TrackingBbox, 
                        BlurredVideo, TrackingBboxVideo, PersonBboxValid, PersonBbox)
@@ -12,3 +13,8 @@ from .pipeline import TopDownMethod, TopDownPerson
 from .pipeline import VIBEPerson, MEVAPerson
 
 from .env import add_path, set_environmental_variables
+
+if 'PIPELINE_3RDPARTY' not in os.environ.keys():
+    MODEL_DATA_DIR = os.path.join(os.path.split(__file__)[0], '../3rdparty')
+else:
+    MODEL_DATA_DIR = os.environ['PIPELINE_3RDPARTY']
