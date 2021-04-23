@@ -722,9 +722,9 @@ class ExposePersonVideo(dj.Computed):
 
 
 @schema
-class MMPoseTopDownPersonVideo(dj.Computed):
+class TopDownPersonVideo(dj.Computed):
     definition = """
-    -> MMPoseTopDownPerson
+    -> TopDownPerson
     -> BlurredVideo
     ---
     output_video      : attach@localattach    # datajoint managed video file
@@ -735,7 +735,7 @@ class MMPoseTopDownPersonVideo(dj.Computed):
         from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
 
         video = (BlurredVideo & key).fetch1('output_video')
-        keypoints = (MMPoseTopDownPerson & key).fetch1('keypoints')
+        keypoints = (TopDownPerson & key).fetch1('keypoints')
         
         def overlay_fn(image, idx):
             image = draw_keypoints(image, keypoints[idx])
@@ -754,14 +754,14 @@ class MMPoseTopDownPersonVideo(dj.Computed):
 @schema
 class GastNetPerson(dj.Computed):
     definition = """
-    -> MMPoseTopDownPerson
+    -> TopDownPerson
     ---
     keypoints_3d       : longblob
     """
 
     def make(self, key):
 
-        keypoints = (MMPoseTopDownPerson & key).fetch1('keypoints')
+        keypoints = (TopDownPerson & key).fetch1('keypoints')
         height, width = (VideoInfo & key).fetch1('height', 'width')
 
         gastnet_files = os.path.join(os.path.split(__file__)[0], '../3rdparty/gastnet/')
@@ -837,7 +837,7 @@ class GastNetPersonVideo(dj.Computed):
     
     def make(self, key):
 
-        keypoints = (MMPoseTopDownPerson & key).fetch1('keypoints')
+        keypoints = (TopDownPerson & key).fetch1('keypoints')
         keypoints_3d = (GastNetPerson & key).fetch1('keypoints_3d').copy()
         blurred_video = (BlurredVideo & key).fetch1('output_video')
         width, height, fps = (VideoInfo & key).fetch1('width', 'height', 'fps')
@@ -882,14 +882,14 @@ class GastNetPersonVideo(dj.Computed):
 @schema
 class PoseFormerPerson(dj.Computed):
     definition = """
-    -> MMPoseTopDownPerson
+    -> TopDownPerson
     ---
     keypoints_3d       : longblob
     """
 
     def make(self, key):
 
-        keypoints = (MMPoseTopDownPerson & key).fetch1('keypoints')
+        keypoints = (TopDownPerson & key).fetch1('keypoints')
         height, width = (VideoInfo & key).fetch1('height', 'width')
 
         poseformer_files = os.path.join(os.path.split(__file__)[0], '../3rdparty/poseformer/')
