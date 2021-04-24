@@ -1,7 +1,7 @@
 import os
 import cv2
 import numpy as np
-from pose_pipeline import Video, TrackingBbox, PersonBboxValid
+from pose_pipeline import Video, TrackingBbox, PersonBbox
 
 
 def fix_bb_aspect_ratio(bbox, dilate=1.2, ratio=1.0):
@@ -59,18 +59,17 @@ def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224):
     from torch.utils.data import DataLoader
     import torchvision.transforms as transforms
 
-    video, tracks, keep_tracks = (Video * TrackingBbox * PersonBboxValid & key).fetch1('video', 'tracks', 'keep_tracks')
+    video, bboxes_dj, present_dj = (Video * PersonBbox & key).fetch1('video', 'bbox', 'present')
 
     cap = cv2.VideoCapture(video)
 
     frames = []
     bboxes = []
     frame_ids = []
-    for i, idx in enumerate(range(len(tracks))):
-        bbox = [t['tlhw'] for t in tracks[idx] if t['track_id'] in keep_tracks]
+    for idx, (bbox, present) in enumerate(zip(bboxes_dj, present_dj)):
 
         # handle the case where person is not tracked in frame
-        if len(bbox) == 0:
+        if not present:
             continue
 
         # should match the length of identified person tracks
@@ -78,7 +77,7 @@ def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224):
         assert ret and frame is not None
 
         frames.append(frame)
-        bboxes.append(bbox)
+        bboxes.append([bbox])
         frame_ids.append(idx)
 
 

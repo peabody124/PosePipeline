@@ -1,7 +1,8 @@
 import os
 
-from .pipeline import (schema, Video, VideoInfo, TrackingBboxMethod, TrackingBbox, 
-                       BlurredVideo, TrackingBboxVideo, PersonBboxValid, PersonBbox)
+from .pipeline import Video, VideoInfo
+from .pipeline import TrackingBboxMethodLookup, TrackingBboxMethod, TrackingBbox, TrackingBboxVideo
+from .pipeline import PersonBboxValid, PersonBbox, BlurredVideo
 from .pipeline import OpenPose, OpenPosePerson, OpenPosePersonVideo
 from .pipeline import CenterHMR, CenterHMRPerson, CenterHMRPersonVideo
 from .pipeline import ExposePerson, ExposePersonVideo
@@ -9,7 +10,7 @@ from .pipeline import ExposePerson, ExposePersonVideo
 #from .pipeline import GastNetPerson, GastNetPersonVideo
 #from .pipeline import PoseWarperPerson, PoseWarperPersonVideo
 #from .pipeline import PoseFormerPerson
-from .pipeline import TopDownMethod, TopDownPerson, TopDownPersonVideo
+from .pipeline import TopDownMethodLookup, TopDownMethod, TopDownPerson, TopDownPersonVideo
 
 
 from .env import add_path, set_environmental_variables
