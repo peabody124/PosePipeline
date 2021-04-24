@@ -1,5 +1,7 @@
+import os
 import cv2
 import numpy as np
+from pose_pipeline import Video, TrackingBbox, PersonBboxValid
 
 
 def fix_bb_aspect_ratio(bbox, dilate=1.2, ratio=1.0):
@@ -49,3 +51,89 @@ def crop_image_bbox(image, bbox, target_size=(288, 384), dilate=1.2):
     image = cv2.warpAffine(image, trans, target_size, flags=cv2.INTER_LINEAR)
 
     return image, bbox
+
+
+def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224):
+
+    from torch.utils.data import Dataset
+    from torch.utils.data import DataLoader
+    import torchvision.transforms as transforms
+
+    video, tracks, keep_tracks = (Video * TrackingBbox * PersonBboxValid & key).fetch1('video', 'tracks', 'keep_tracks')
+
+    cap = cv2.VideoCapture(video)
+
+    frames = []
+    bboxes = []
+    frame_ids = []
+    for i, idx in enumerate(range(len(tracks))):
+        bbox = [t['tlhw'] for t in tracks[idx] if t['track_id'] in keep_tracks]
+
+        # handle the case where person is not tracked in frame
+        if len(bbox) == 0:
+            continue
+
+        # should match the length of identified person tracks
+        ret, frame = cap.read()
+        assert ret and frame is not None
+
+        frames.append(frame)
+        bboxes.append(bbox)
+        frame_ids.append(idx)
+
+
+    class Inference(Dataset):
+        def __init__(self, frames, bboxes=None, joints2d=None, scale=1.0, crop_size=crop_size):
+
+            self.frames = frames
+            self.bboxes = bboxes
+            self.joints2d = joints2d
+            self.scale = scale
+            self.crop_size = crop_size
+            self.frames = frames
+            self.has_keypoints = True if joints2d is not None else False
+
+            def get_default_transform():
+                normalize = transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                )
+                transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    normalize,
+                ])
+                return transform
+
+            self.transform = get_default_transform()
+            self.norm_joints2d = np.zeros_like(self.joints2d)
+
+            if self.has_keypoints:
+                bboxes, time_pt1, time_pt2 = get_all_bbox_params(joints2d, vis_thresh=0.3)
+                bboxes[:, 2:] = 150. / bboxes[:, 2:]
+                self.bboxes = np.stack([bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 2]]).T
+
+                self.image_file_names = self.image_file_names[time_pt1:time_pt2]
+                self.joints2d = joints2d[time_pt1:time_pt2]
+                self.frames = frames[time_pt1:time_pt2]
+
+        def __len__(self):
+            return len(self.frames)
+
+        def __getitem__(self, idx):
+
+            img = cv2.cvtColor(self.frames[idx], cv2.COLOR_BGR2RGB)
+            bbox = self.bboxes[idx][0]
+            j2d = self.joints2d[idx] if self.has_keypoints else None
+
+            norm_img = crop_image_bbox(img, bbox, target_size=(self.crop_size, self.crop_size), dilate=self.scale)[0]
+            norm_img = self.transform(norm_img)
+
+            if self.has_keypoints:
+                return norm_img, kp_2d
+            else:
+                return norm_img
+
+    dataset = Inference(frames, bboxes)
+    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
+    
+    return frame_ids, dataloader
+

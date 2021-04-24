@@ -193,6 +193,15 @@ class BlurredVideo(dj.Computed):
 
 
 @schema
+class TrackingBboxMethodLookup(dj.Manual):
+    definition = '''
+    tracking_method      : int
+    ---
+    tracking_method_name : varchar(50)
+    '''
+
+
+@schema
 class TrackingBboxMethod(dj.Manual):
     definition = '''
     -> Video
@@ -213,19 +222,19 @@ class TrackingBbox(dj.Computed):
 
         video = (Video & key).fetch1('video')
 
-        if key['tracking_method'] == 0:
+        if (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'DeepSortYOLOv4':
             from pose_pipeline.wrappers.deep_sort_yolov4.parser import tracking_bounding_boxes
             tracks = tracking_bounding_boxes(video)
             key['tracks'] = tracks
 
-        elif key['tracking_method'] == 1:
+        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'MMTrack':
             from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
             tracks = mmtrack_bounding_boxes(video)
             key['tracks'] = tracks
 
         else:
             os.remove(video)
-            raise Exception("Unsupported tracking method: {key['tracking_method']")
+            raise Exception("Unsupported tracking method: {key['tracking_method']}")
 
         track_ids = np.unique([t['track_id'] for track in tracks for t in track])
         key['num_tracks'] = len(track_ids)
@@ -412,6 +421,15 @@ class OpenPosePersonVideo(dj.Computed):
 
 
 @schema
+class TopDownMethodLookup(dj.Manual):
+    definition = '''
+    top_down_method      : int
+    ---
+    top_down_method_name : varchar(50)
+    '''
+
+
+@schema
 class TopDownMethod(dj.Manual):
     definition = '''
     -> PersonBbox
@@ -429,10 +447,9 @@ class TopDownPerson(dj.Computed):
 
     def make(self, key):
 
-        if key['top_down_method'] == 0:
+        if (TopDownMethodLookup & key).fetch1('top_down_method_name') == 'MMPose':
             from .wrappers.mmpose_top_down import mmpose_top_down_person
             key['keypoints'] = mmpose_top_down_person(key)
-
         else:
             raise Exception("Method not implemented")
 

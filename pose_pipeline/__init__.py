@@ -10,7 +10,7 @@ from .pipeline import ExposePerson, ExposePersonVideo
 #from .pipeline import PoseWarperPerson, PoseWarperPersonVideo
 #from .pipeline import PoseFormerPerson
 from .pipeline import TopDownMethod, TopDownPerson, TopDownPersonVideo
-from .pipeline import VIBEPerson, MEVAPerson
+
 
 from .env import add_path, set_environmental_variables
 
