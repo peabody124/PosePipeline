@@ -1,18 +1,21 @@
 import os
 import numpy as np
+from pose_pipeline import MODEL_DATA_DIR
+from pose_pipeline.utils.bounding_box import get_person_dataloader
+from pose_pipeline.utils.bounding_box import convert_crop_coords_to_orig_img, convert_crop_cam_to_orig_img
 from pose_pipeline.env import add_path
+from pose_pipeline import VideoInfo
 import torch
 
 def process_vibe(key):
 
-    from pose_pipeline import MODEL_DATA_DIR
-    from pose_pipeline.utils.bounding_box import get_person_dataloader
+    crop_size=224
 
     spin_checkpoint = os.path.join(MODEL_DATA_DIR, 'vibe/spin_model_checkpoint.pth.tar')
     vibe_checkpoint = os.path.join(MODEL_DATA_DIR, 'vibe/vibe_model_w_3dpw.pth.tar')
 
     with add_path(os.environ['VIBE_PATH']):
-        frame_ids, dataloader = get_person_dataloader(key)
+        frame_ids, dataloader, bbox = get_person_dataloader(key, crop_size=crop_size)
 
         from lib.models.vibe import VIBE_Demo
 
@@ -59,5 +62,9 @@ def process_vibe(key):
     key['betas'] = np.concatenate(pred_betas, axis=0)
     key['joints3d'] = np.concatenate(pred_joints3d, axis=0)
     key['joints2d'] = np.concatenate(smpl_joints2d, axis=0)
+
+    height, width = (VideoInfo & key).fetch1('height', 'width')
+    key['cams'] = convert_crop_cam_to_orig_img(key['cams'], bbox, width, height)
+    key['joints2d'] = convert_crop_coords_to_orig_img(bbox, key['joints2d'], crop_size)
 
     return key

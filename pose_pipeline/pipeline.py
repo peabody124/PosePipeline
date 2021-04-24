@@ -535,7 +535,17 @@ class SMPLPersonVideo(dj.Computed):
 
     def make(self, key):
 
-        raise Exception("Method not implemented")
+        from pose_pipeline.utils.visualization import video_overlay, get_smpl_callback
+
+        poses, betas, cams = (SMPLPerson & key).fetch1('poses', 'betas', 'cams')
+        callback = get_smpl_callback(key, poses, betas, cams)
+        video = (BlurredVideo & key).fetch1('output_video')
+        
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        video_overlay(video, out_file_name, callback, downsample=1)
+        key['output_video'] = out_file_name
+
+        os.remove(video)
 
         self.insert1(key)
 

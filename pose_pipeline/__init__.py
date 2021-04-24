@@ -7,10 +7,11 @@ from .pipeline import OpenPose, OpenPosePerson, OpenPosePersonVideo
 from .pipeline import CenterHMR, CenterHMRPerson, CenterHMRPersonVideo
 from .pipeline import ExposePerson, ExposePersonVideo
 #from .pipeline import MMPoseTopDownPerson, MMPoseTopDownPersonVideo
-#from .pipeline import GastNetPerson, GastNetPersonVideo
+from .pipeline import GastNetPerson, GastNetPersonVideo
 #from .pipeline import PoseWarperPerson, PoseWarperPersonVideo
 #from .pipeline import PoseFormerPerson
 from .pipeline import TopDownMethodLookup, TopDownMethod, TopDownPerson, TopDownPersonVideo
+from .pipeline import SMPLMethodLookup, SMPLMethod, SMPLPerson, SMPLPersonVideo
 
 
 from .env import add_path, set_environmental_variables

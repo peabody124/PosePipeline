@@ -53,7 +53,52 @@ def crop_image_bbox(image, bbox, target_size=(288, 384), dilate=1.2):
     return image, bbox
 
 
-def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224):
+def convert_crop_cam_to_orig_img(cam, bbox, img_width, img_height):
+    '''
+    Convert predicted camera from cropped image coordinates
+    to original image coordinates
+    :param cam (ndarray, shape=(3,)): weak perspective camera in cropped img coordinates
+    :param bbox (ndarray, shape=(4,)): bbox coordinates (TLHW)
+    :param img_width (int): original image width
+    :param img_height (int): original image height
+    :return:
+
+    Adopted from https://github.com/mkocabas/VIBE/blob/master/lib/utils/demo_utils.py
+    '''
+    
+    cy = bbox[:, 1] + bbox[:, 3] / 2
+    cx = bbox[:, 0] + bbox[:, 2] / 2
+    h = bbox[:, 2]
+
+    hw, hh = img_width / 2., img_height / 2.
+    sx = cam[:,0] * (1. / (img_width / h))
+    sy = cam[:,0] * (1. / (img_height / h))
+    tx = ((cx - hw) / hw / sx) + cam[:,1]
+    ty = ((cy - hh) / hh / sy) + cam[:,2]
+    orig_cam = np.stack([sx, sy, tx, ty]).T
+    return orig_cam
+
+          
+def convert_crop_coords_to_orig_img(bbox, keypoints, crop_size):
+    # Adopted from https://github.com/mkocabas/VIBE/blob/master/lib/utils/demo_utils.py
+
+    cy = bbox[:, 1] + bbox[:, 3] / 2
+    cx = bbox[:, 0] + bbox[:, 2] / 2
+    h = bbox[:, 2]
+
+    # unnormalize to crop coords
+    keypoints = 0.5 * crop_size * (keypoints + 1.0)
+
+    # rescale to orig img crop
+    keypoints *= h[..., None, None] / crop_size
+
+    # transform into original image coords
+    keypoints[:,:,0] = (cx - h/2)[..., None] + keypoints[:,:,0]
+    keypoints[:,:,1] = (cy - h/2)[..., None] + keypoints[:,:,1]
+    return keypoints
+
+
+def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224, scale=1.0):
 
     from torch.utils.data import Dataset
     from torch.utils.data import DataLoader
@@ -63,6 +108,14 @@ def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224):
 
     cap = cv2.VideoCapture(video)
 
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+    )
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        normalize,
+    ])
+
     frames = []
     bboxes = []
     frame_ids = []
@@ -70,19 +123,26 @@ def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224):
 
         # handle the case where person is not tracked in frame
         if not present:
+            print('Skip missing frame')
             continue
 
         # should match the length of identified person tracks
         ret, frame = cap.read()
         assert ret and frame is not None
 
-        frames.append(frame)
-        bboxes.append([bbox])
+        img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        norm_img, bbox = crop_image_bbox(img, bbox, target_size=(crop_size, crop_size), dilate=scale)
+        norm_img = transform(norm_img)
+
+        #print(norm_img.shape)
+        #break
+        frames.append(norm_img)
+        bboxes.append(bbox)
         frame_ids.append(idx)
 
-
     class Inference(Dataset):
-        def __init__(self, frames, bboxes=None, joints2d=None, scale=1.0, crop_size=crop_size):
+        def __init__(self, frames, bboxes=None, joints2d=None):
 
             self.frames = frames
             self.bboxes = bboxes
@@ -93,13 +153,7 @@ def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224):
             self.has_keypoints = True if joints2d is not None else False
 
             def get_default_transform():
-                normalize = transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                )
-                transform = transforms.Compose([
-                    transforms.ToTensor(),
-                    normalize,
-                ])
+
                 return transform
 
             self.transform = get_default_transform()
@@ -119,20 +173,15 @@ def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224):
 
         def __getitem__(self, idx):
 
-            img = cv2.cvtColor(self.frames[idx], cv2.COLOR_BGR2RGB)
-            bbox = self.bboxes[idx][0]
+            img = self.frames[idx]
             j2d = self.joints2d[idx] if self.has_keypoints else None
 
-            norm_img = crop_image_bbox(img, bbox, target_size=(self.crop_size, self.crop_size), dilate=self.scale)[0]
-            norm_img = self.transform(norm_img)
-
             if self.has_keypoints:
-                return norm_img, kp_2d
+                return img, kp_2d
             else:
-                return norm_img
+                return img
 
     dataset = Inference(frames, bboxes)
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
     
-    return frame_ids, dataloader
-
+    return frame_ids, dataloader, np.stack(bboxes, axis=0)

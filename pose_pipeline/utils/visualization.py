@@ -5,6 +5,7 @@ import subprocess
 import numpy as np
 from tqdm import tqdm
 
+from pose_pipeline import VideoInfo, SMPLPerson
 
 class FaceBlur:
     """ cv2 based Facial Blur method. Not very quick or accurate """
@@ -116,3 +117,22 @@ def draw_keypoints(image, keypoints, radius=10, threshold=0.1):
             if radius > 2:
                 cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius-2, (255, 255, 255), -1)
     return image
+
+
+def get_smpl_callback(key, poses, betas, cams):
+    from pose_estimation.body_models.smpl import SMPL
+    from pose_estimation.util.pyrender_renderer import PyrendererRenderer
+    height, width = (VideoInfo & key).fetch1('height', 'width')
+
+    smpl = SMPL()
+    renderer = PyrendererRenderer(smpl.get_faces(), img_size=(height, width))    
+    verts = smpl(poses, betas)[0].numpy()
+
+    joints2d = (SMPLPerson & key).fetch1('joints2d')
+
+    def overlay(frame, idx, renderer=renderer, verts=verts, cams=cams, joints2d=joints2d):
+        frame = renderer(verts[idx], cams[idx], frame)
+        frame = draw_keypoints(frame, joints2d[idx])
+        return frame
+        
+    return overlay
