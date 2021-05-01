@@ -4,6 +4,7 @@ import sys
 import cv2
 import tempfile
 import numpy as np
+import pandas as pd
 from datetime import datetime, timedelta
 
 import datajoint as dj
@@ -340,13 +341,37 @@ class PersonBbox(dj.Computed):
 
         LD = main_track = extract_person_track(tracks) 
         dict_lists = {k: [dic[k] for dic in LD] for k in LD[0]}
-
-        present = np.array(dict_lists['present'])
        
-        key['present'] = np.array(dict_lists['present'])
-        key['bbox'] =  np.array(dict_lists['bbox'])
+        present = np.array(dict_lists['present'])
+        bbox =  np.array(dict_lists['bbox'])
+
+        # smooth any brief missing frames
+        df = pd.DataFrame(bbox)
+        df.iloc[~present] = np.nan
+        df = df.fillna(method='bfill', axis=0, limit=2)
+        df = df.fillna(method='ffill', axis=0, limit=2)
+
+        # get smoothed version
+        key['present'] = ~df.isna().any(axis=1).values
+        key['bbox'] = df.values
 
         self.insert1(key)
+
+    @staticmethod
+    def get_overlay_fn(key):
+
+        bboxes = (PersonBbox & key).fetch1('bbox')
+
+        def overlay_fn(image, idx):
+            bbox = bboxes[idx].copy()
+            bbox[2:] = bbox[:2] + bbox[2:]
+            if np.any(np.isnan(bbox)):
+                return image
+            
+            cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), 6)
+            return image
+
+        return overlay_fn
 
     @property
     def key_source(self):
@@ -862,8 +887,11 @@ class TopDownPersonVideo(dj.Computed):
         video = (BlurredVideo & key).fetch1('output_video')
         keypoints = (TopDownPerson & key).fetch1('keypoints')
         
+        bbox_fn = PersonBbox.get_overlay_fn(key)
+
         def overlay_fn(image, idx):
             image = draw_keypoints(image, keypoints[idx])
+            image = bbox_fn(image, idx)
             return image
 
         _, out_file_name = tempfile.mkstemp(suffix='.mp4')

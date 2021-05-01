@@ -107,7 +107,7 @@ def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur
         subprocess.run(['mv', temp, output_name])
 
 
-def draw_keypoints(image, keypoints, radius=10, threshold=0.1, color=(255, 255, 255)):
+def draw_keypoints(image, keypoints, radius=10, threshold=0.5, color=(255, 255, 255)):
     """ Draw the keypoints on an image
     """
     image = image.copy()
