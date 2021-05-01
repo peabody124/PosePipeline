@@ -107,7 +107,7 @@ def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur
         subprocess.run(['mv', temp, output_name])
 
 
-def draw_keypoints(image, keypoints, radius=10, threshold=0.1):
+def draw_keypoints(image, keypoints, radius=10, threshold=0.1, color=(255, 255, 255)):
     """ Draw the keypoints on an image
     """
     image = image.copy()
@@ -115,7 +115,7 @@ def draw_keypoints(image, keypoints, radius=10, threshold=0.1):
         if keypoints[i, -1] > threshold:
             cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius, (0, 0, 0), -1)
             if radius > 2:
-                cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius-2, (255, 255, 255), -1)
+                cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius-2, color, -1)
     return image
 
 
@@ -132,7 +132,7 @@ def get_smpl_callback(key, poses, betas, cams):
 
     def overlay(frame, idx, renderer=renderer, verts=verts, cams=cams, joints2d=joints2d):
         frame = renderer(verts[idx], cams[idx], frame)
-        frame = draw_keypoints(frame, joints2d[idx])
+        frame = draw_keypoints(frame, joints2d[idx], radius=4)
         return frame
         
     return overlay

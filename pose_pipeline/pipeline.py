@@ -232,6 +232,11 @@ class TrackingBbox(dj.Computed):
             tracks = mmtrack_bounding_boxes(video)
             key['tracks'] = tracks
 
+        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'FairMOT':
+            from pose_pipeline.wrappers.fairmot import fairmot_bounding_boxes
+            tracks = fairmot_bounding_boxes(video)
+            key['tracks'] = tracks
+
         else:
             os.remove(video)
             raise Exception("Unsupported tracking method: {key['tracking_method']}")
@@ -342,6 +347,10 @@ class PersonBbox(dj.Computed):
         key['bbox'] =  np.array(dict_lists['bbox'])
 
         self.insert1(key)
+
+    @property
+    def key_source(self):
+        return PersonBboxValid & 'video_subject_id >= 0'
 
 
 @schema
@@ -455,6 +464,11 @@ class TopDownPerson(dj.Computed):
 
         self.insert1(key)
 
+    @property
+    def joint_names(self):
+        return ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear", "Left Shoulder", "Right Shoulder",
+                "Left Elbow", "Right Elbow", "Left Wrist", "Right Wrist", "Left Hip", "Right Hip", "Left Knee",
+                "Right Knee", "Left Ankle", "Right Ankle"]
 
 ## Classes that handle SMPL meshed based tracking
 @schema
