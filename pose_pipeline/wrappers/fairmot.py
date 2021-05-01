@@ -12,9 +12,9 @@ params = {'K': 500,
     'batch_size': 12, 
     'cat_spec_wh': False, 
     'chunk_sizes': [6, 6], 
-    'conf_thres': 0.4, # confidence thresh for tracking
+    'conf_thres': 0.2, # confidence thresh for tracking
     'det_thres': 0.2,  # confidence thresh for detection
-    'nms_thres': 0.3,  # iou thresh for nms
+    'nms_thres': 0.4,  # iou thresh for nms
     'dense_wh': False, 
     'down_ratio': 4, 
     'fix_res': True, 
