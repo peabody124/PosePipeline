@@ -489,8 +489,8 @@ class TopDownPerson(dj.Computed):
 
         self.insert1(key)
 
-    @property
-    def joint_names(self):
+    @staticmethod
+    def joint_names():
         return ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear", "Left Shoulder", "Right Shoulder",
                 "Left Elbow", "Right Elbow", "Left Wrist", "Right Wrist", "Left Hip", "Right Hip", "Left Knee",
                 "Right Knee", "Left Ankle", "Right Ankle"]
@@ -910,6 +910,7 @@ class GastNetPerson(dj.Computed):
     -> TopDownPerson
     ---
     keypoints_3d       : longblob
+    keypoints_valid    : longblob
     """
 
     def make(self, key):
@@ -971,7 +972,10 @@ class GastNetPerson(dj.Computed):
             # Generating 3D poses
             prediction = gen_pose(re_kpts, valid_frames, width, height, model_pos, pad, causal_shift)
 
-        key['keypoints_3d'] = prediction[0]
+        key['keypoints_3d'] = np.zeros((keypoints.shape[1], 17, 3))
+        key['keypoints_3d'][np.array(valid_frames[0])] = prediction[0]
+        key['keypoints_valid'] = [i in valid_frames[0] for i in np.arange(keypoints.shape[1])]
+
         self.insert1(key)
 
     @staticmethod
