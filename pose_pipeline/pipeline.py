@@ -379,6 +379,35 @@ class PersonBbox(dj.Computed):
 
 
 @schema
+class DetectedFrames(dj.Computed):
+    definition = '''
+    -> PersonBboxValid
+    -> VideoInfo
+    --- 
+    frames_detected        : int
+    frames_missed          : int
+    fraction_found         : float
+    '''
+    
+    def make(self, key):
+        
+        if (PersonBboxValid & key).fetch1('video_subject_id') < 0:
+            key['frames_detected'] = 0
+            key['frames_missed'] = (VideoInfo & key).fetch1('num_frames')
+        else:
+            if len(PersonBbox & key) == 0:
+                print(f'Skipping {key} as PersonBbox not computed')
+                return
+            present = (PersonBbox & key).fetch1('present')
+            key['frames_detected'] = np.sum(present)
+            key['frames_missed'] = np.sum(~present)
+            
+        key['fraction_found'] = key['frames_detected'] / (key['frames_missed'] + key['frames_detected'])
+        
+        self.insert1(key)
+
+
+@schema
 class OpenPosePerson(dj.Computed):
     definition = '''
     -> PersonBbox
@@ -580,13 +609,15 @@ class SMPLPersonVideo(dj.Computed):
         callback = get_smpl_callback(key, poses, betas, cams)
         video = (BlurredVideo & key).fetch1('output_video')
         
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        fg, out_file_name = tempfile.mkstemp(suffix='.mp4')
         video_overlay(video, out_file_name, callback, downsample=1)
         key['output_video'] = out_file_name
 
+        self.insert1(key)
+
+        os.close(fd)
         os.remove(video)
 
-        self.insert1(key)
 
 
 @schema
