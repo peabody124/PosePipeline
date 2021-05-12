@@ -43,6 +43,45 @@ class Video(dj.Manual):
         if session_id is not None:
             d.update({'session_id': session_id})
         return d
+    
+    @staticmethod
+    def get_robust_reader(key, return_cap=True):
+        import subprocess
+        import tempfile
+        
+        # fetch video and place in temp directory
+        video = (Video & key).fetch1('video')        
+        _, outfile = tempfile.mkstemp(suffix='.mp4')
+        subprocess.run(['mv', video, outfile])
+        video = outfile
+        
+        cap = cv2.VideoCapture(video)
+
+        # check all the frames are readable
+        expected_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        completed = True
+
+        def compress(video):
+            _, outfile = tempfile.mkstemp(suffix='.mp4')
+            print(f'Unable to read all the fails. Transcoding {video} to {outfile}')
+            subprocess.run(['ffmpeg', '-y', '-i', video, '-c:v', 'libx264', '-b:v', '1M', outfile])
+            return outfile
+
+        for i in range(expected_frames):
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                cap.release()
+
+                video = compress(video)
+                cap = cv2.VideoCapture(video)
+                break
+
+        if return_cap:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0) 
+            return cap
+        else:
+            cap.release()
+            return video
 
 
 @schema
@@ -88,11 +127,11 @@ class OpenPose(dj.Computed):
 
     def make(self, key):
         
-        d = (Video & key).fetch1()
+        video = Video.get_robust_reader(key, return_cap=False)
 
         with add_path(os.path.join(os.environ['OPENPOSE_PATH'], 'build/python')):
             from pose_pipeline.wrappers.openpose import openpose_parse_video
-            res = openpose_parse_video(d['video'])
+            res = openpose_parse_video(video)
 
         key['keypoints'] = [r['keypoints'] for r in res]
         key['pose_ids'] = [r['pose_ids'] for r in res]
@@ -103,7 +142,7 @@ class OpenPose(dj.Computed):
         self.insert1(key)
 
         # remove the downloaded video to avoid clutter
-        os.remove(d['video'])
+        os.remove(video)
 
 
 @schema
@@ -125,7 +164,7 @@ class MMPoseBottomUpPerson(dj.Computed):
 
         model = init_pose_model(pose_cfg, pose_ckpt)
 
-        video = (Video & key).fetch1('video')
+        video = Video.get_robust_reader(key, return_cap=False)
         cap = cv2.VideoCapture(video)
 
         video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -163,7 +202,8 @@ class BlurredVideo(dj.Computed):
 
         from pose_pipeline.utils.visualization import video_overlay
         
-        video, keypoints = (Video * OpenPose & key).fetch1('video', 'keypoints')
+        video = Video.get_robust_reader(key, return_cap=False)
+        keypoints = (OpenPose & key).fetch1('keypoints')
 
         def overlay_callback(image, idx):
             image = image.copy()
@@ -221,7 +261,7 @@ class TrackingBbox(dj.Computed):
 
     def make(self, key):
 
-        video = (Video & key).fetch1('video')
+        video = Video.get_robust_reader(key, return_cap=False)
 
         if (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'DeepSortYOLOv4':
             from pose_pipeline.wrappers.deep_sort_yolov4.parser import tracking_bounding_boxes
@@ -634,7 +674,7 @@ class CenterHMR(dj.Computed):
                        os.path.join(os.environ['CENTERHMR_PATH'], 'src/core')]):
             from pose_pipeline.wrappers.centerhmr import centerhmr_parse_video
 
-            video = (Video & key).fetch1('video')
+            video = Video.get_robust_reader(key, return_cap=False)
             res = centerhmr_parse_video(video, os.environ['CENTERHMR_PATH'])
 
         # don't store verticies or images
@@ -781,7 +821,7 @@ class PoseWarperPerson(dj.Computed):
 
         from pose_pipeline.wrappers.posewarper import posewarper_track
 
-        video = (Video & key).fetch1('video')
+        video = Video.get_robust_reader(key, return_cap=False)
         bbox, present = (PersonBbox & key).fetch1('bbox', 'present')
 
         key['keypoints'] = posewarper_track(video, bbox, present)
@@ -849,7 +889,7 @@ class ExposePerson(dj.Computed):
         with add_path(os.environ['EXPOSE_PATH']):
             from pose_pipeline.wrappers.expose import expose_parse_video
 
-            video = (Video & key).fetch1('video')
+            video = Video.get_robust_reader(key, return_cap=False)
             bboxes, present = (PersonBbox & key).fetch1('bbox', 'present')
 
             results = expose_parse_video(video, bboxes, present, exp_cfg)

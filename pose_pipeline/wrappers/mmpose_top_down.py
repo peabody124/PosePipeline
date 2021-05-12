@@ -15,11 +15,10 @@ def mmpose_top_down_person(key):
     pose_cfg = os.path.join(MODEL_DATA_DIR, 'mmpose/config/top_down/darkpose/coco/hrnet_w48_coco_384x288_dark.py')
     pose_ckpt = os.path.join(MODEL_DATA_DIR, 'mmpose/checkpoints/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth')
 
-    video, bboxes = (Video * PersonBbox & key).fetch1('video', 'bbox')
+    bboxes = (PersonBbox & key).fetch1('bbox')
+    cap = Video.get_robust_reader(key)
 
     model = init_pose_model(pose_cfg, pose_ckpt)
-
-    cap = cv2.VideoCapture(video)
 
     results = []
     for bbox in tqdm(bboxes):
@@ -39,7 +38,5 @@ def mmpose_top_down_person(key):
                         
         res = inference_top_down_pose_model(model, frame, [bbox_wrap])[0]
         results.append(res[0]['keypoints'])
-
-    os.remove(video)
 
     return np.asarray(results)
