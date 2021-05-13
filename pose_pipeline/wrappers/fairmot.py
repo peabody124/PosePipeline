@@ -95,37 +95,31 @@ def fairmot_bounding_boxes(file_path):
         # and get the tracker
         tracker = JDETracker(opt, fps)
             
-        try:
-            for frame_id, (path, img, img0) in tqdm(enumerate(dataloader)):
-                
-                blob = torch.from_numpy(img).cuda().unsqueeze(0)
-                #lob = torch.from_numpy(img).unsqueeze(0)
-                
-                online_targets = tracker.update(blob, img0)
-                
-                frame_result = []
-                
-                for t in online_targets:
-                    tlwh = t.tlwh
-                    vertical = tlwh[2] / tlwh[3] > 1.6
-                    
-                    if tlwh[2] * tlwh[3] > opt.min_box_area and not vertical:
-                        x1, y1, w, h = tlwh
-                        
-                        # Note: this is using the name "TLHW" consistent with the other algorithms in the
-                        # pose_pipeline, but is actually ordered X, Y, W, H.
-                        frame_result.append({'track_id': t.track_id,
-                                            'tlbr': np.array([x1 * xscale, y1 * yscale, (x1 + w) * xscale, (y1 + h) * yscale]),
-                                            'tlhw': np.array([x1 * xscale, y1 * yscale, w * xscale, h * yscale]),
-                                            'confidence': t.score
-                                            })
+        for frame_id, (path, img, img0) in tqdm(enumerate(dataloader)):
 
-                tracks.append(frame_result)
+            blob = torch.from_numpy(img).cuda().unsqueeze(0)
+            #lob = torch.from_numpy(img).unsqueeze(0)
 
-        except:
-            if frame_id == len(dataloader) - 2:
-                print('Last frame not read')
-                tracks.append([])
+            online_targets = tracker.update(blob, img0)
+
+            frame_result = []
+
+            for t in online_targets:
+                tlwh = t.tlwh
+                vertical = tlwh[2] / tlwh[3] > 1.6
+
+                if tlwh[2] * tlwh[3] > opt.min_box_area and not vertical:
+                    x1, y1, w, h = tlwh
+
+                    # Note: this is using the name "TLHW" consistent with the other algorithms in the
+                    # pose_pipeline, but is actually ordered X, Y, W, H.
+                    frame_result.append({'track_id': t.track_id,
+                                        'tlbr': np.array([x1 * xscale, y1 * yscale, (x1 + w) * xscale, (y1 + h) * yscale]),
+                                        'tlhw': np.array([x1 * xscale, y1 * yscale, w * xscale, h * yscale]),
+                                        'confidence': t.score
+                                        })
+
+            tracks.append(frame_result)
 
         del tracker
         
