@@ -278,6 +278,11 @@ class TrackingBbox(dj.Computed):
             tracks = fairmot_bounding_boxes(video)
             key['tracks'] = tracks
 
+        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'TransTrack':
+            from pose_pipeline.wrappers.transtrack import transtrack_bounding_boxes
+            tracks = transtrack_bounding_boxes(video)
+            key['tracks'] = tracks
+            
         else:
             os.remove(video)
             raise Exception("Unsupported tracking method: {key['tracking_method']}")
