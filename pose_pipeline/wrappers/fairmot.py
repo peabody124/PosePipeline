@@ -125,6 +125,7 @@ def fairmot_bounding_boxes(file_path):
         except:
             if frame_id == len(dataloader) - 2:
                 print('Last frame not read')
+                tracks.append([])
 
         del tracker
         
