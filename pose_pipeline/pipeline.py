@@ -432,6 +432,9 @@ class DetectedFrames(dj.Computed):
     frames_detected        : int
     frames_missed          : int
     fraction_found         : float
+    mean_other_people      : float
+    median_confidence      : float
+    frame_data             : longblob
     '''
     
     def make(self, key):
@@ -439,15 +442,33 @@ class DetectedFrames(dj.Computed):
         if (PersonBboxValid & key).fetch1('video_subject_id') < 0:
             key['frames_detected'] = 0
             key['frames_missed'] = (VideoInfo & key).fetch1('num_frames')
-        else:
-            if len(PersonBbox & key) == 0:
-                print(f'Skipping {key} as PersonBbox not computed')
-                return
-            present = (PersonBbox & key).fetch1('present')
-            key['frames_detected'] = np.sum(present)
-            key['frames_missed'] = np.sum(~present)
-            
+                    
+        # compute statistics
+        tracks = (TrackingBbox & key).fetch1('tracks')
+        keep_tracks = (PersonBboxValid & key).fetch1('keep_tracks')
+
+        def extract_person_stats(tracks):
+
+            def process_timestamp(track_timestep):
+                valid = [t for t in track_timestep if t['track_id'] in keep_tracks]
+                total_tracks = len(track_timestep)
+                if len(valid) == 1:
+                    return {'present': True, 'confidence': valid[0]['confidence'], 'others': total_tracks-1}
+                else:
+                    return {'present': False, 'confidence': 0, 'others': total_tracks}
+
+            return [process_timestamp(t) for t in tracks]
+
+        stats = extract_person_stats(tracks)
+        present = np.array([x['present'] for x in stats])
+        
+        key['frames_detected'] = np.sum(present)
+        key['frames_missed'] = np.sum(~present)
         key['fraction_found'] = key['frames_detected'] / (key['frames_missed'] + key['frames_detected'])
+        
+        key['median_confidence'] = np.median([x['confidence'] for x in stats if x['present']])
+        key['mean_other_people'] = np.mean([x['others'] for x in stats])
+        key['frame_data'] = stats
         
         self.insert1(key)
 
