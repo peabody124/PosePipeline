@@ -285,7 +285,7 @@ class TrackingBbox(dj.Computed):
             
         else:
             os.remove(video)
-            raise Exception("Unsupported tracking method: {key['tracking_method']}")
+            raise Exception(f"Unsupported tracking method: {key['tracking_method']}")
 
         track_ids = np.unique([t['track_id'] for track in tracks for t in track])
         key['num_tracks'] = len(track_ids)
@@ -592,12 +592,13 @@ class TopDownPerson(dj.Computed):
 
 ## Classes that handle SMPL meshed based tracking
 @schema
-class SMPLMethodLookup(dj.Manual):
+class SMPLMethodLookup(dj.Lookup):
     definition = '''
     smpl_method       : int
     ---
     smpl_method_name  : varchar(50)
     '''
+    contents = [{'smpl_method': 0, 'smpl_method_name': 'VIBE'}, {'smpl_method': 1, 'smpl_method_name': 'MEVA'}]
 
 
 @schema
