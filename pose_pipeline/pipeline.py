@@ -234,13 +234,18 @@ class BlurredVideo(dj.Computed):
 
 
 @schema
-class TrackingBboxMethodLookup(dj.Manual):
+class TrackingBboxMethodLookup(dj.Lookup):
     definition = '''
     tracking_method      : int
     ---
     tracking_method_name : varchar(50)
     '''
-
+    contents = [
+        {'tracking_method': 0, 'tracking_method_name': 'DeepSortYOLOv4'},
+        {'tracking_method': 1, 'tracking_method_name': 'MMTrack'},
+        {'tracking_method': 2, 'tracking_method_name': 'FairMOT'},
+        {'tracking_method': 3, 'tracking_method_name': 'TransTrack'},
+    ]
 
 @schema
 class TrackingBboxMethod(dj.Manual):
@@ -550,12 +555,15 @@ class OpenPosePersonVideo(dj.Computed):
 
 
 @schema
-class TopDownMethodLookup(dj.Manual):
+class TopDownMethodLookup(dj.Lookup):
     definition = '''
     top_down_method      : int
     ---
     top_down_method_name : varchar(50)
     '''
+    contents = [
+        {'top_down_method': 0, 'top_down_method_name': 'MMPose'},
+        {'top_down_method': 1, 'top_down_method_name': 'MMPoseWholebody'}]
 
 
 @schema
@@ -676,7 +684,7 @@ class SMPLPersonVideo(dj.Computed):
         callback = get_smpl_callback(key, poses, betas, cams)
         video = (BlurredVideo & key).fetch1('output_video')
         
-        fg, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        fd, out_file_name = tempfile.mkstemp(suffix='.mp4')
         video_overlay(video, out_file_name, callback, downsample=1)
         key['output_video'] = out_file_name
 
