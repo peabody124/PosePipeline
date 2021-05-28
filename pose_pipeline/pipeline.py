@@ -587,6 +587,9 @@ class TopDownPerson(dj.Computed):
         if (TopDownMethodLookup & key).fetch1('top_down_method_name') == 'MMPose':
             from .wrappers.mmpose_top_down import mmpose_top_down_person
             key['keypoints'] = mmpose_top_down_person(key)
+        elif (TopDownMethodLookup & key).fetch1('top_down_method_name') == 'MMPoseWholebody':
+            from .wrappers.mmpose_top_down import mmpose_whole_body
+            key['keypoints'] = mmpose_whole_body(key)
         else:
             raise Exception("Method not implemented")
 
