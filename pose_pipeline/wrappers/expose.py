@@ -175,7 +175,7 @@ def expose_parse_video(video, bboxes, present, config_file, device=torch.device(
         initial_params = [dict(zip(initial_params,t)) for t in zip(*initial_params.values())]
 
         params = model_output['body']['final']
-        final_params = {k: v.cpu().detach().numpy() for k, v in params.items() if k not in ['full_pose']}
+        final_params = {k: v.cpu().detach().numpy() for k, v in params.items() if k not in ['full_pose'] and v is not None}
         final_params = [dict(zip(final_params,t)) for t in zip(*final_params.values())]
 
         # add to accumulator
