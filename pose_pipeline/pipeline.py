@@ -471,12 +471,18 @@ class DetectedFrames(dj.Computed):
         key['frames_missed'] = np.sum(~present)
         key['fraction_found'] = key['frames_detected'] / (key['frames_missed'] + key['frames_detected'])
         
-        key['median_confidence'] = np.median([x['confidence'] for x in stats if x['present']])
-        key['mean_other_people'] = np.mean([x['others'] for x in stats])
+        if key['frames_detected'] > 0:
+            key['median_confidence'] = np.median([x['confidence'] for x in stats if x['present']])
+        else:
+            key['median_confidence'] = 0.0
+        key['mean_other_people'] = np.nanmean([x['others'] for x in stats])
         key['frame_data'] = stats
         
         self.insert1(key)
 
+    @property
+    def key_source(self):
+        return PersonBboxValid & 'video_subject_id >= 0'
 
 @schema
 class OpenPosePerson(dj.Computed):
