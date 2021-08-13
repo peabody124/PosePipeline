@@ -458,7 +458,10 @@ class DetectedFrames(dj.Computed):
                 valid = [t for t in track_timestep if t['track_id'] in keep_tracks]
                 total_tracks = len(track_timestep)
                 if len(valid) == 1:
-                    return {'present': True, 'confidence': valid[0]['confidence'], 'others': total_tracks-1}
+                    if 'confidence' in valid[0].keys():
+                        return {'present': True, 'confidence': valid[0]['confidence'], 'others': total_tracks-1}
+                    else:
+                        return {'present': True, 'confidence': 1.0, 'others': total_tracks-1}
                 else:
                     return {'present': False, 'confidence': 0, 'others': total_tracks}
 
@@ -484,6 +487,24 @@ class DetectedFrames(dj.Computed):
     def key_source(self):
         return PersonBboxValid & 'video_subject_id >= 0'
 
+@schema
+class BestDetectedFrames(dj.Computed):
+    definition = '''
+    -> DetectedFrames
+    '''
+    
+    def make(self, key):
+        detected_frames = (DetectedFrames & key).fetch('fraction_found', 'KEY', as_dict=True)
+        
+        best = np.argmax([d['fraction_found'] for d in detected_frames])
+        res = detected_frames[best]
+        res.pop('fraction_found')
+        self.insert1(res)
+        
+    @property
+    def key_source(self):
+        return Video & DetectedFrames
+        
 @schema
 class OpenPosePerson(dj.Computed):
     definition = '''
@@ -976,7 +997,7 @@ class ExposePersonVideo(dj.Computed):
             overlay_fn = vw.get_overlay_fn()
 
             _, out_file_name = tempfile.mkstemp(suffix='.mp4')
-            video_overlay(video, out_file_name, overlay_fn, downsample=4)
+            video_overlay(video, out_file_name, overlay_fn, downsample=1)
 
         key['output_video'] = out_file_name
 
@@ -1244,3 +1265,133 @@ class PoseFormerPerson(dj.Computed):
     def joint_names():
         """ PoseFormer follows the output format of Video3D and uses Human3.6 ordering """
         return ['Hip (root)', 'Right hip', 'Right knee', 'Right foot', 'Left hip', 'Left knee', 'Left foot', 'Spine', 'Thorax', 'Nose', 'Head', 'Left shoulder', 'Left elbow', 'Left wrist', 'Right shoulder', 'Right elbow', 'Right wrist']
+
+    
+@schema
+class WalkingSegments(dj.Computed):
+    definition = '''
+    -> GastNetPerson
+    --- 
+    phases                 : longblob
+    walking_frames         : longblob
+    segment_boundaries     : longblob
+    walking_prob           : longblob
+    num_walking_frames     : int
+    '''
+    
+    def make(self, key):
+
+        from gait_analysis.walking_segments import get_gait_phases
+        from scipy.signal import hilbert, medfilt
+        
+        keypoints3d, keypoints_valid = (GastNetPerson & key).fetch1('keypoints_3d', 'keypoints_valid')
+        phases = get_gait_phases(keypoints3d)
+
+        # apply heuristic to find walking segments
+        fs = 1.0 / 30.0
+
+        analytic_signal = hilbert(phases, axis=0)
+        amplitude_envelope = np.abs(analytic_signal)
+        walking_prob = np.array(keypoints_valid) * np.mean(amplitude_envelope, axis=-1)
+
+        def hyst(x, th_lo, th_hi, initial = False):
+            hi = x >= th_hi
+            lo_or_hi = (x <= th_lo) | hi
+            ind = np.nonzero(lo_or_hi)[0]
+            if not ind.size: # prevent index error if ind is empty
+                return np.zeros_like(x, dtype=bool) | initial
+            cnt = np.cumsum(lo_or_hi) # from 0 to len(x)
+            return np.where(cnt, hi[ind[cnt-1]], initial)
+
+        def deglitch(x):
+            return medfilt(x,3)
+        
+        thresh = deglitch(hyst(deglitch(walking_prob), 0.95, 0.75))
+        
+        keep_idx = np.nonzero(thresh)[0]
+        if len(keep_idx) > 0:
+            breaks = np.where(np.diff(keep_idx) != 1)[0]
+            breaks = np.array([-1, *breaks, -1])
+            segments = zip(keep_idx[breaks[:-1]+1], keep_idx[breaks[1:]])
+            segments = [(s1, s2) for s1, s2 in segments if (s2 - s1) > 50]
+
+            key['walking_frames'] = [np.arange(s1, s2+1) for s1, s2 in segments]
+            key['num_walking_frames'] = np.sum([len(k) for k in key['walking_frames']])
+            key['segment_boundaries'] = segments
+
+        else:
+            key['walking_frames'] = []
+            key['segment_boundaries'] = []
+            key['num_walking_frames'] = 0
+            
+        key['phases'] = phases
+        key['walking_prob'] = walking_prob
+
+        self.insert1(key)
+
+@schema
+class WalkingSegmentsVideo(dj.Computed):
+    definition = '''
+    -> WalkingSegments
+    -> BlurredVideo
+    --- 
+    output_video      : attach@localattach    # datajoint managed video file
+    '''
+
+    
+    def make(self, key):
+        
+        from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
+        import tempfile
+        
+        height, width, timestamps = (VideoInfo & key).fetch1('height', 'width', 'timestamps')
+        coco_keypoints = (TopDownPerson & key).fetch1('keypoints')
+        phases, walking_frames = (WalkingSegments & key).fetch1('phases', 'walking_frames')
+        
+        bbox_fn = PersonBbox.get_overlay_fn(key)
+
+        phases = np.reshape(phases, [-1, 4, 2])
+        phases = np.arctan2(phases[:, :, 1], phases[:, :, 0])
+        left_down = phases[:, 0] < phases[:, 2]
+        right_down = phases[:, 1] < phases[:, 3]
+        
+        ankle_idx = [TopDownPerson.joint_names().index(j) for j in ["Left Ankle", "Right Ankle"]]
+        
+        def frame_phase(idx):
+            phase = phases[idx]
+            walking = np.any([idx in frames for frames in walking_frames])
+            down = [left_down[idx], right_down[idx]]
+            
+            return walking, phase, down
+        
+        
+        def overlay_fn(image, idx):
+            walking, phase, down = frame_phase(idx)
+
+            image = draw_keypoints(image, coco_keypoints[idx], radius=5, color=(0, 0, 255) if walking else (255, 255, 255))
+            image = bbox_fn(image, idx)
+            
+            if walking:
+                if down[0]:
+                    image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[0]:ankle_idx[0]+1], radius=15, color=(0, 255, 0))
+                else:
+                    image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[0]:ankle_idx[0]+1], radius=15, color=(255, 0, 0))
+
+                if down[1]:
+                    image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[1]:ankle_idx[1]+1], radius=15, color=(0, 255, 0))
+                else:
+                    image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[1]:ankle_idx[1]+1], radius=15, color=(255, 0, 0))
+            
+            return image
+        
+        
+        video = (BlurredVideo & key).fetch1('output_video')
+        
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        video_overlay(video, out_file_name, overlay_fn, downsample=1)
+        key['output_video'] = out_file_name
+        
+        self.insert1(key)
+
+        os.remove(out_file_name)
+        os.remove(video)

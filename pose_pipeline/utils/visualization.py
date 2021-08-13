@@ -5,7 +5,7 @@ import subprocess
 import numpy as np
 from tqdm import tqdm
 
-from pose_pipeline import VideoInfo, SMPLPerson
+from pose_pipeline import VideoInfo, PersonBbox, SMPLPerson
 
 class FaceBlur:
     """ cv2 based Facial Blur method. Not very quick or accurate """
@@ -107,7 +107,7 @@ def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur
         subprocess.run(['mv', temp, output_name])
 
 
-def draw_keypoints(image, keypoints, radius=10, threshold=0.5, color=(255, 255, 255)):
+def draw_keypoints(image, keypoints, radius=10, threshold=0.2, color=(255, 255, 255)):
     """ Draw the keypoints on an image
     """
     image = image.copy()
@@ -123,7 +123,9 @@ def get_smpl_callback(key, poses, betas, cams):
     from pose_estimation.body_models.smpl import SMPL
     from pose_estimation.util.pyrender_renderer import PyrendererRenderer
     height, width = (VideoInfo & key).fetch1('height', 'width')
-
+    
+    valid_idx = np.where((PersonBbox & key).fetch1('present'))[0]
+    
     smpl = SMPL()
     renderer = PyrendererRenderer(smpl.get_faces(), img_size=(height, width))    
     verts = smpl(poses, betas)[0].numpy()
@@ -131,8 +133,11 @@ def get_smpl_callback(key, poses, betas, cams):
     joints2d = (SMPLPerson & key).fetch1('joints2d')
 
     def overlay(frame, idx, renderer=renderer, verts=verts, cams=cams, joints2d=joints2d):
-        frame = renderer(verts[idx], cams[idx], frame)
-        frame = draw_keypoints(frame, joints2d[idx], radius=4)
+        
+        smpl_idx = np.where(valid_idx == idx)[0]
+        if len(smpl_idx) == 1:
+            frame = renderer(verts[smpl_idx[0]], cams[smpl_idx[0]], frame)
+            frame = draw_keypoints(frame, joints2d[smpl_idx[0]], radius=4)
         return frame
         
     return overlay
