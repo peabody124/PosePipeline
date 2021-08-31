@@ -636,7 +636,7 @@ class SMPLMethodLookup(dj.Lookup):
     ---
     smpl_method_name  : varchar(50)
     '''
-    contents = [{'smpl_method': 0, 'smpl_method_name': 'VIBE'}, {'smpl_method': 1, 'smpl_method_name': 'MEVA'}]
+    contents = [{'smpl_method': 0, 'smpl_method_name': 'VIBE'}, {'smpl_method': 1, 'smpl_method_name': 'MEVA'}, {'smpl_method': 2, 'smpl_method_name': "ProHMR"}]
 
 
 @schema
@@ -677,6 +677,12 @@ class SMPLPerson(dj.Computed):
             res = process_meva(key)
             res['model_type'] = 'SMPL'
 
+        elif smpl_method_name == 'ProHMR':
+
+            from .wrappers.prohmr import process_prohmr
+            res = process_prohmr(key)
+            res['model_type'] = 'SMPL'
+            
         else:
             raise Exception(f"Method {smpl_method_name} not implemented")
 
@@ -708,10 +714,18 @@ class SMPLPersonVideo(dj.Computed):
 
     def make(self, key):
 
-        from pose_pipeline.utils.visualization import video_overlay, get_smpl_callback
-
+        from pose_pipeline.utils.visualization import video_overlay
+        
         poses, betas, cams = (SMPLPerson & key).fetch1('poses', 'betas', 'cams')
-        callback = get_smpl_callback(key, poses, betas, cams)
+        
+        smpl_method_name = (SMPLMethodLookup & key).fetch1('smpl_method_name')
+        if smpl_method_name == 'ProHMR':
+            from .wrappers.prohmr import get_prohmr_smpl_callback
+            callback = get_prohmr_smpl_callback(key, poses, betas, cams)
+        else:
+            from pose_pipeline.utils.visualization import get_smpl_callback
+            callback = get_smpl_callback(key, poses, betas, cams)
+            
         video = (BlurredVideo & key).fetch1('output_video')
         
         fd, out_file_name = tempfile.mkstemp(suffix='.mp4')
@@ -1368,7 +1382,7 @@ class WalkingSegmentsVideo(dj.Computed):
         def overlay_fn(image, idx):
             walking, phase, down = frame_phase(idx)
 
-            image = draw_keypoints(image, coco_keypoints[idx], radius=5, color=(0, 0, 255) if walking else (255, 255, 255))
+            image = draw_keypoints(image, coco_keypoints[idx], color=(0, 0, 255) if walking else (255, 255, 255))
             image = bbox_fn(image, idx)
             
             if walking:

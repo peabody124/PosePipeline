@@ -12,7 +12,8 @@ from .pipeline import GastNetPerson, GastNetPersonVideo
 #from .pipeline import PoseFormerPerson
 from .pipeline import TopDownMethodLookup, TopDownMethod, TopDownPerson, TopDownPersonVideo
 from .pipeline import SMPLMethodLookup, SMPLMethod, SMPLPerson, SMPLPersonVideo
-from .pipeline import WalkingSegments, WalkingSegmentsVideos
+from .pipeline import WalkingSegments, WalkingSegmentsVideo
+
 
 from .env import add_path, set_environmental_variables
 

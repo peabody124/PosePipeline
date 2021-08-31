@@ -34,6 +34,7 @@ def set_environmental_variables():
     os.environ["FAIRMOT_PATH"] = '/home/jcotton/projects/pose/FairMOT/src/lib'
     os.environ["DCNv2_PATH"] = '/home/jcotton/projects/pose/DCNv2/DCN'
     os.environ["TRANSTRACK_PATH"] = '/home/jcotton/projects/pose/TransTrack'
+    os.environ["PROHMR_PATH"] = '/home/jcotton/projects/pose/ProHMR'
 
     import platform
     if 'Ubuntu' in platform.version():
