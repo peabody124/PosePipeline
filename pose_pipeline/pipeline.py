@@ -245,6 +245,7 @@ class TrackingBboxMethodLookup(dj.Lookup):
         {'tracking_method': 1, 'tracking_method_name': 'MMTrack'},
         {'tracking_method': 2, 'tracking_method_name': 'FairMOT'},
         {'tracking_method': 3, 'tracking_method_name': 'TransTrack'},
+        {'tracking_method': 4, 'tracking_method_name': 'TraDeS'},
     ]
 
 @schema
@@ -287,7 +288,12 @@ class TrackingBbox(dj.Computed):
             from pose_pipeline.wrappers.transtrack import transtrack_bounding_boxes
             tracks = transtrack_bounding_boxes(video)
             key['tracks'] = tracks
-            
+
+        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'TraDeS':
+            from pose_pipeline.wrappers.trades import trades_bounding_boxes
+            tracks = trades_bounding_boxes(video)
+            key['tracks'] = tracks
+                        
         else:
             os.remove(video)
             raise Exception(f"Unsupported tracking method: {key['tracking_method']}")

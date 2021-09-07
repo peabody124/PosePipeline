@@ -35,6 +35,7 @@ def set_environmental_variables():
     os.environ["DCNv2_PATH"] = '/home/jcotton/projects/pose/DCNv2/DCN'
     os.environ["TRANSTRACK_PATH"] = '/home/jcotton/projects/pose/TransTrack'
     os.environ["PROHMR_PATH"] = '/home/jcotton/projects/pose/ProHMR'
+    os.environ["TRADES_PATH"] = '/home/jcotton/projects/pose/TraDeS/src/lib'
 
     import platform
     if 'Ubuntu' in platform.version():
