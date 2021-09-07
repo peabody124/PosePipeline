@@ -642,7 +642,10 @@ class SMPLMethodLookup(dj.Lookup):
     ---
     smpl_method_name  : varchar(50)
     '''
-    contents = [{'smpl_method': 0, 'smpl_method_name': 'VIBE'}, {'smpl_method': 1, 'smpl_method_name': 'MEVA'}, {'smpl_method': 2, 'smpl_method_name': "ProHMR"}]
+    contents = [{'smpl_method': 0, 'smpl_method_name': 'VIBE'},
+                {'smpl_method': 1, 'smpl_method_name': 'MEVA'},
+                {'smpl_method': 2, 'smpl_method_name': "ProHMR"},
+                {'smpl_method': 2, 'smpl_method_name': "ProHMR_MMPose"}]
 
 
 @schema
@@ -687,6 +690,11 @@ class SMPLPerson(dj.Computed):
 
             from .wrappers.prohmr import process_prohmr
             res = process_prohmr(key)
+            res['model_type'] = 'SMPL'
+            
+        elif smpl_method_name == 'ProHMR_MMPose':
+            from .wrappers.prohmr import process_prohmr_mmpose
+            res = process_prohmr_mmpose(key)
             res['model_type'] = 'SMPL'
             
         else:

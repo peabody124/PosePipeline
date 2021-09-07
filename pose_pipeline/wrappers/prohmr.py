@@ -5,7 +5,7 @@ from pose_pipeline import MODEL_DATA_DIR
 from pose_pipeline.utils.bounding_box import get_person_dataloader
 from pose_pipeline.utils.bounding_box import convert_crop_coords_to_orig_img, convert_crop_cam_to_orig_img
 from pose_pipeline.env import add_path
-from pose_pipeline import VideoInfo, OpenPosePerson
+from pose_pipeline import VideoInfo, OpenPosePerson, TopDownPerson
 import torch
 
 
@@ -61,17 +61,17 @@ def process_prohmr(key, optimization=True, batch_size=1):
     checkpoint = os.path.join(MODEL_DATA_DIR, 'prohmr/checkpoint.pt')
 
     results = []
-    
+
     height, width = (VideoInfo & key).fetch1('height', 'width')
-    
+
     with add_path(os.environ['PROHMR_PATH']):
-        
+
         from prohmr.configs import prohmr_config
         from prohmr.models import ProHMR
         from prohmr.optimization import KeypointFitting
         from prohmr.utils import recursive_to
         from prohmr.utils.geometry import perspective_projection
-        
+
         model_cfg = prohmr_config()
         model_cfg['SMPL']['MODEL_PATH'] = model_path
         model_cfg['SMPL']['JOINT_REGRESSOR_EXTRA'] = joint_regressor_extra
@@ -85,7 +85,7 @@ def process_prohmr(key, optimization=True, batch_size=1):
         if optimization:
             keypoint_fitting = KeypointFitting(model_cfg)
             keypoints = (OpenPosePerson & key).fetch1('keypoints')
-        
+
         crop_size = model_cfg['MODEL']['IMAGE_SIZE']
         frame_ids, dataloader, bbox = get_person_dataloader(key, crop_size=crop_size, batch_size=batch_size)
 
@@ -96,12 +96,11 @@ def process_prohmr(key, optimization=True, batch_size=1):
         pred_betas = []
         pred_joints3d = []
         smpl_joints2d = []
-        
-        
+
         for idx, batch in tqdm(enumerate(dataloader)):
-            
+
             frame_id = frame_ids[idx]
-            
+
             batch = recursive_to(batch, device)
             with torch.no_grad():
                 out = model({'img': batch})
@@ -112,12 +111,12 @@ def process_prohmr(key, optimization=True, batch_size=1):
 
                 scale = np.array([width, height]) / 2.0
                 center = np.array([width, height]) / 2.0
-                
+
                 batch_opt={'img': batch.to(device), 'orig_keypoints_2d': torch.from_numpy(kp).to(device),
                            'box_center': torch.from_numpy(center[None, ...]).to(device), 
                            'box_size': torch.from_numpy(scale[None, 0]).to(device), 
                            'img_size': torch.from_numpy(np.array([[width, height]])).to(device)}
-                
+
                 opt_out = model.downstream_optimization(regression_output=out,
                                                         batch=batch_opt,
                                                         opt_task=keypoint_fitting,
@@ -129,39 +128,141 @@ def process_prohmr(key, optimization=True, batch_size=1):
                 projected_joints = projected_joints.detach().cpu().numpy()
 
                 frames.append(frame_id)
-                
+
                 pred_cam.append(opt_out['camera_translation'].cpu().detach().numpy())
                 pred_verts.append(opt_out['vertices'].cpu().detach().numpy())
-                
+
                 # for consistency with other algos and rendering code
                 global_orient = opt_out['smpl_params']['global_orient'][0]
                 global_orient = batch_rot2aa(global_orient)
                 poses_aa = batch_rot2aa(opt_out['smpl_params']['body_pose'][0]).reshape(1, 23*3)
                 pred_pose.append(torch.cat([global_orient, poses_aa], axis=-1).cpu().detach().numpy())
-                
+
                 pred_betas.append(opt_out['smpl_params']['betas'].cpu().detach().numpy())
                 pred_joints3d.append(opt_out['model_joints'].cpu().detach().numpy())
-                
+
                 smpl_joints2d.append(projected_joints)
-                
-                
+
             else:
                 print('Not implemented')
-                                                
+          
     key['cams'] = np.concatenate(pred_cam, axis=0)
     key['verts'] = np.concatenate(pred_verts, axis=0)
     key['poses'] = np.concatenate(pred_pose, axis=0)
     key['betas'] = np.concatenate(pred_betas, axis=0)
     key['joints3d'] = np.concatenate(pred_joints3d, axis=0)
     key['joints2d'] = np.concatenate(smpl_joints2d, axis=0)
-        
+
     N = key['cams'].shape[0]
-    
+
+    return key
+
+
+def process_prohmr_mmpose(key, batch_size=1):
+
+    top_down_method = (TopDownMethodLookup & 'top_down_method_name="MMPose"').fetch1('top_down_method')
+    assert len(TopDownPerson & key & f'top_down_method={top_down_method}') == 1
+
+    model_path = os.path.join(MODEL_DATA_DIR, 'prohmr/')
+    mean_params = os.path.join(MODEL_DATA_DIR, 'prohmr/smpl_mean_params.npz')
+    checkpoint = os.path.join(MODEL_DATA_DIR, 'prohmr/checkpoint.pt')
+    smpl_to_mmpose = [24, 26, 25, 28, 27, 16, 17, 18, 19, 20, 21, 1, 2, 4, 5, 7, 8]
+
+    results = []
+
+    height, width = (VideoInfo & key).fetch1('height', 'width')
+
+    with add_path(os.environ['PROHMR_PATH']):
+
+        from prohmr.configs import prohmr_config
+        from prohmr.models import ProHMR
+        from prohmr.optimization import KeypointFitting
+        from prohmr.utils import recursive_to
+        from prohmr.utils.geometry import perspective_projection
+        
+        model_cfg = prohmr_config()
+        model_cfg['SMPL']['MODEL_PATH'] = model_path
+        model_cfg['SMPL']['JOINT_REGRESSOR_EXTRA'] = None
+        model_cfg['SMPL']['JOINT_MAP'] = smpl_to_mmpose
+        model_cfg['SMPL']['MEAN_PARAMS'] = mean_params
+
+        device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+        model = ProHMR.load_from_checkpoint(checkpoint, strict=False, cfg=model_cfg).to(device)
+        model.eval();
+
+        keypoint_fitting = KeypointFitting(model_cfg)
+        keypoints = (TopDownPerson & key & f'top_down_method={top_down_method}').fetch1('keypoints')
+
+        crop_size = model_cfg['MODEL']['IMAGE_SIZE']
+        frame_ids, dataloader, bbox = get_person_dataloader(key, crop_size=crop_size, batch_size=batch_size)
+
+        frames = []
+        pred_cam = [] 
+        pred_verts = []
+        pred_pose = []
+        pred_betas = []
+        pred_joints3d = []
+        smpl_joints2d = []
+
+        for idx, batch in tqdm(enumerate(dataloader)):
+
+            frame_id = frame_ids[idx]
+
+            batch = recursive_to(batch, device)
+            with torch.no_grad():
+                out = model({'img': batch})
+
+            kp = keypoints[None, frame_id, ...]
+
+            scale = np.array([width, height]) / 2.0
+            center = np.array([width, height]) / 2.0
+
+            batch_opt={'img': batch.to(device), 'orig_keypoints_2d': torch.from_numpy(kp).to(device),
+                       'box_center': torch.from_numpy(center[None, ...]).to(device), 
+                       'box_size': torch.from_numpy(scale[None, 0]).to(device), 
+                       'img_size': torch.from_numpy(np.array([[width, height]])).to(device)}
+
+            opt_out = model.downstream_optimization(regression_output=out,
+                                                    batch=batch_opt,
+                                                    opt_task=keypoint_fitting,
+                                                    use_hips=True,
+                                                    full_frame=True)
+
+            camera_center = torch.tensor([[width / 2, height / 2]])
+            projected_joints = perspective_projection(opt_out['model_joints'], opt_out['camera_translation'], model_cfg['EXTRA']['FOCAL_LENGTH'] * torch.ones_like(camera_center), camera_center=camera_center)
+            projected_joints = projected_joints.detach().cpu().numpy()
+
+            frames.append(frame_id)
+
+            pred_cam.append(opt_out['camera_translation'].cpu().detach().numpy())
+            pred_verts.append(opt_out['vertices'].cpu().detach().numpy())
+
+            # for consistency with other algos and rendering code
+            global_orient = opt_out['smpl_params']['global_orient'][0]
+            global_orient = batch_rot2aa(global_orient)
+            poses_aa = batch_rot2aa(opt_out['smpl_params']['body_pose'][0]).reshape(1, 23*3)
+            pred_pose.append(torch.cat([global_orient, poses_aa], axis=-1).cpu().detach().numpy())
+
+            pred_betas.append(opt_out['smpl_params']['betas'].cpu().detach().numpy())
+            pred_joints3d.append(opt_out['model_joints'].cpu().detach().numpy())
+
+            smpl_joints2d.append(projected_joints)
+                           
+    key['cams'] = np.concatenate(pred_cam, axis=0)
+    key['verts'] = np.concatenate(pred_verts, axis=0)
+    key['poses'] = np.concatenate(pred_pose, axis=0)
+    key['betas'] = np.concatenate(pred_betas, axis=0)
+    key['joints3d'] = np.concatenate(pred_joints3d, axis=0)
+    key['joints2d'] = np.concatenate(smpl_joints2d, axis=0)
+
+    N = key['cams'].shape[0]
+
     return key
 
 
 def get_prohmr_smpl_callback(key, poses, betas, cams):
-    
+
     from pose_estimation.body_models.smpl import SMPL
     from pose_pipeline import VideoInfo, PersonBbox, SMPLPerson
     from pose_pipeline.utils.visualization import draw_keypoints
