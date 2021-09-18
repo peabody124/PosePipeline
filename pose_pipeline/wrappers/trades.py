@@ -109,6 +109,15 @@ def trades_bounding_boxes(file_path):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
+    if height > width:
+        # change configuration to better handle portrait mode
+        opt.input_h = 864
+        opt.input_w = 480
+        opt.input_res = 864  # unchanged
+        opt.output_h = 216
+        opt.output_w = 120
+        opt.output_res = 216 # unchanged
+    
     tracks = []
 
     with add_path(os.environ["TRADES_PATH"]):
