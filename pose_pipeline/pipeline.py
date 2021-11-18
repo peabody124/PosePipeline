@@ -111,6 +111,12 @@ class VideoInfo(dj.Computed):
         self.insert1(key)
 
         os.remove(video)
+        
+    def fetch_timestamps(self):
+        assert len(self) == 1, "Restrict to single entity"
+        timestamps = self.fetch1('timestamps')
+        timestamps = np.array([(t-timestamps[0]).total_seconds() for t in timestamps])
+        return timestamps
 
 
 @schema

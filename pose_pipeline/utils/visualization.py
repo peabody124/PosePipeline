@@ -54,7 +54,8 @@ class FaceBlur:
         return self.blur_faces(image)
 
 
-def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur_faces=False, compress=True):
+def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur_faces=False,
+                  compress=True, bitrate='5M'):
     """ Process a video and create overlay image 
     
         Args:
@@ -103,7 +104,7 @@ def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur
 
     if compress:
         _, temp = tempfile.mkstemp(suffix='.mp4')
-        subprocess.run(['ffmpeg', '-y', '-i', output_name, '-c:v', 'libx264', '-b:v', '1M', temp])
+        subprocess.run(['ffmpeg', '-y', '-i', output_name, '-c:v', 'libx264', '-b:v', bitrate, temp])
         subprocess.run(['mv', temp, output_name])
 
 
