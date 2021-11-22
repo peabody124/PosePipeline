@@ -36,6 +36,8 @@ def set_environmental_variables():
     os.environ["TRANSTRACK_PATH"] = '/home/jcotton/projects/pose/TransTrack'
     os.environ["PROHMR_PATH"] = '/home/jcotton/projects/pose/ProHMR'
     os.environ["TRADES_PATH"] = '/home/jcotton/projects/pose/TraDeS/src/lib'
+    os.environ["RIE_PATH"] = '/home/jcotton/projects/pose/Pose3D-RIE'
+    os.environ["VIDEOPOSE3D_PATH"] = '/home/jcotton/projects/pose/VideoPose3D'
 
     import platform
     if 'Ubuntu' in platform.version():
