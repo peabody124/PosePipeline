@@ -38,6 +38,7 @@ def set_environmental_variables():
     os.environ["TRADES_PATH"] = '/home/jcotton/projects/pose/TraDeS/src/lib'
     os.environ["RIE_PATH"] = '/home/jcotton/projects/pose/Pose3D-RIE'
     os.environ["VIDEOPOSE3D_PATH"] = '/home/jcotton/projects/pose/VideoPose3D'
+    os.environ["POSEAUG_PATH"] = '/home/jcotton/projects/pose/PoseAug'
 
     import platform
     if 'Ubuntu' in platform.version():

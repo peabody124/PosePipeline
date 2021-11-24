@@ -651,7 +651,7 @@ class LiftingMethodLookup(dj.Lookup):
     contents = [
         {'lifting_method': 0, 'lifting_method_name': 'GastNet'},
         {'lifting_method': 1, 'lifting_method_name': 'VideoPose3D'},
-        {'lifting_method': 0, 'lifting_method_name': 'RIE'},
+        {'lifting_method': 2, 'lifting_method_name': 'PoseAug'},
         
     ]
 
@@ -684,6 +684,9 @@ class LiftingPerson(dj.Computed):
         elif (LiftingMethodLookup & key).fetch1('lifting_method_name') == 'VideoPose3D':
             from .wrappers.videopose3d import process_videopose3d
             results = process_videopose3d(key)            
+        elif (LiftingMethodLookup & key).fetch1('lifting_method_name') == 'PoseAug':
+            from .wrappers.poseaug import process_poseaug
+            results = process_poseaug(key)       
         else:
             raise Exception(f"Method not implemented {key}")
 

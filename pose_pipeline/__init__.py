@@ -11,6 +11,7 @@ from .pipeline import GastNetPerson, GastNetPersonVideo
 #from .pipeline import PoseWarperPerson, PoseWarperPersonVideo
 #from .pipeline import PoseFormerPerson
 from .pipeline import TopDownMethodLookup, TopDownMethod, TopDownPerson, TopDownPersonVideo
+from .pipeline import LiftingMethodLookup, LiftingMethod, LiftingPerson
 from .pipeline import SMPLMethodLookup, SMPLMethod, SMPLPerson, SMPLPersonVideo
 from .pipeline import WalkingSegments, WalkingSegmentsVideo
 
