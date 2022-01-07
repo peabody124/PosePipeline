@@ -6,17 +6,11 @@ import torch
 import torch.utils.data as dutils
 import functools
 
-from expose.data.build import collate_batch
-from expose.data.transforms import build_transforms
-from expose.data.utils.bbox import bbox_to_center_scale
-from expose.data.targets.image_list import to_image_list
-from expose.data.targets import BoundingBox
-from expose.models.smplx_net import SMPLXNet
-from expose.utils.plot_utils import HDRenderer
-from expose.utils.checkpointer import Checkpointer
+from pose_pipeline import MODEL_DATA_DIR
+from pose_pipeline import Video, PersonBbox, VideoInfo
+from pose_pipeline.env import add_path
 
 from loguru import logger
-
 
 # Modification of expose/data/datasets/image_folder.py to handle a video natively
 class VideoWithBoxes(dutils.Dataset):
@@ -49,6 +43,9 @@ class VideoWithBoxes(dutils.Dataset):
 
     def __getitem__(self, index):
         
+        from expose.data.targets import BoundingBox
+        from expose.data.utils.bbox import bbox_to_center_scale
+    
         bbox = self.bboxes[index]
 
         frame_idx = self.valid_idx[index]
@@ -89,6 +86,12 @@ def cpu(tensor):
 
 
 def expose_parse_video(video, bboxes, present, config_file, device=torch.device('cuda'), batch_size=16):
+
+    from expose.data.build import collate_batch
+    from expose.data.transforms import build_transforms
+    from expose.data.targets.image_list import to_image_list
+    from expose.models.smplx_net import SMPLXNet
+    from expose.utils.checkpointer import Checkpointer
 
     logger.remove()
 
@@ -194,7 +197,8 @@ def expose_parse_video(video, bboxes, present, config_file, device=torch.device(
 class ExposeVideoWriter:
 
     def __init__(self, results, body_crop_size=256, focal_length=5000.0):
-
+        from expose.utils.plot_utils import HDRenderer
+    
         self.renderer = HDRenderer(img_size=body_crop_size)
         self.focal_length = focal_length
         self.results = results
@@ -232,6 +236,101 @@ class ExposeVideoWriter:
                     bg_imgs=[np.transpose(image, [2, 0, 1])],
                     return_with_alpha=False,
                     body_color=[0.4, 0.4, 0.7]
+            )
+
+            image = np.transpose(image[0], [1, 2, 0])
+            image = (image * 255).astype(np.uint8)
+
+            return image
+
+        return overlay_frame
+
+def process_expose(key, return_results=False):
+
+    # need to add this to path before importing the parse function
+    exp_cfg = os.path.join(os.environ['EXPOSE_PATH'], 'data/conf.yaml')
+
+    with add_path(os.environ['EXPOSE_PATH']):
+        from pose_pipeline.wrappers.expose import expose_parse_video
+
+        video = Video.get_robust_reader(key, return_cap=False)
+        bboxes, present = (PersonBbox & key).fetch1('bbox', 'present')
+
+        results = expose_parse_video(video, bboxes, present, exp_cfg)
+
+        os.remove(video)
+
+    from scipy.spatial.transform import Rotation as R
+    from pose_pipeline.utils.bounding_box import convert_crop_coords_to_orig_img, convert_crop_cam_to_orig_img
+    crop_size=224
+
+    key['joints3d'] = np.asarray([r['joints'] for r in results['final_params']])
+    key['joints2d'] = np.asarray([r['proj_joints'] for r in results['final_params']])
+    key['verts'] = np.asarray([r['vertices'] for r in results['final_params']])
+    key['poses'] = np.asarray([R.from_matrix(np.concatenate([r['global_orient'], r['body_pose'], r['left_hand_pose'], r['body_pose']], axis=0)).as_rotvec()
+                            for r in results['final_params']])
+    key['betas'] = np.asarray([r['betas'] for r in results['final_params']])
+    
+    bboxes_dj, present_dj = (Video * PersonBbox & key).fetch1('bbox', 'present')
+    bbox = bboxes_dj[present_dj]
+    key['joints2d'] = convert_crop_coords_to_orig_img(bbox, key['joints2d'], crop_size)
+
+    key['cams'] = {
+        'transl': np.asarray([r['transl'] for r in results['final_params']]),
+        'bbox_size': results['bbox_size'],
+        'bbox_center': results['bbox_center'],
+        'camera_scale': results['camera_scale'],
+        'camera_transl': results['camera_transl'],
+        'verts': key['verts']
+    }
+
+    if return_results:
+        return key, results
+
+    return key
+
+
+def get_expose_callback(key):
+
+    from pose_pipeline.pipeline import SMPLPerson, PersonBbox
+
+    body_crop_size=256
+    focal_length=5000.0
+    
+    import smplx
+    model_path = os.path.join(MODEL_DATA_DIR, 'expose/data/models/smplx/SMPLX_NEUTRAL.npz')
+    smplx_model = smplx.body_models.SMPLX(model_path)
+    faces = smplx_model.faces
+
+    present, cams = (SMPLPerson * PersonBbox & key).fetch1('present', 'cams')
+
+    frames = np.where(present)[0].tolist()
+
+    with add_path(os.environ['EXPOSE_PATH']):
+        from expose.utils.plot_utils import HDRenderer
+        renderer = HDRenderer(img_size=body_crop_size)
+        
+        def overlay_frame(image, frame_idx):
+
+            if frame_idx not in frames:
+                return image
+
+            idx = frames.index(frame_idx)
+            print(idx)
+
+            image = image / 255.0
+
+            z = 2 * focal_length / (cams['camera_scale'][idx] * cams['bbox_size'][idx])
+
+            transl = [*cams['camera_transl'][idx], z]
+
+            image = renderer(cams['verts'][idx][None, ...],
+                             faces, focal_length=[focal_length],
+                             camera_translation=[cams['transl'][idx]],
+                             camera_center=[cams['bbox_center'][idx]],
+                             bg_imgs=[np.transpose(image, [2, 0, 1])],
+                             return_with_alpha=False,
+                             body_color=[0.4, 0.4, 0.7]
             )
 
             image = np.transpose(image[0], [1, 2, 0])

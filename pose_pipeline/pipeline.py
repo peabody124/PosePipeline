@@ -710,7 +710,8 @@ class SMPLMethodLookup(dj.Lookup):
     contents = [{'smpl_method': 0, 'smpl_method_name': 'VIBE'},
                 {'smpl_method': 1, 'smpl_method_name': 'MEVA'},
                 {'smpl_method': 2, 'smpl_method_name': "ProHMR"},
-                {'smpl_method': 2, 'smpl_method_name': "ProHMR_MMPose"}]
+                {'smpl_method': 2, 'smpl_method_name': "ProHMR_MMPose"},
+                {'smpl_method': 3, 'smpl_method_name': "Expose"}]
 
 
 @schema
@@ -761,6 +762,12 @@ class SMPLPerson(dj.Computed):
             from .wrappers.prohmr import process_prohmr_mmpose
             res = process_prohmr_mmpose(key)
             res['model_type'] = 'SMPL'
+
+        elif smpl_method_name == 'Expose':
+
+            from .wrappers.expose import process_expose
+            res = process_expose(key)
+            res['model_type'] = 'SMPL-X'
             
         else:
             raise Exception(f"Method {smpl_method_name} not implemented")
@@ -801,6 +808,9 @@ class SMPLPersonVideo(dj.Computed):
         if smpl_method_name == 'ProHMR':
             from .wrappers.prohmr import get_prohmr_smpl_callback
             callback = get_prohmr_smpl_callback(key, poses, betas, cams)
+        elif smpl_method_name == 'Expose':
+            from .wrappers.expose import get_expose_callback
+            callback = get_expose_callback(key)
         else:
             from pose_pipeline.utils.visualization import get_smpl_callback
             callback = get_smpl_callback(key, poses, betas, cams)
