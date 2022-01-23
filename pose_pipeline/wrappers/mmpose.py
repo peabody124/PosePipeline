@@ -78,3 +78,40 @@ def mmpose_whole_body(key):
         results.append(res[0]['keypoints'])
 
     return np.asarray(results)
+
+
+def mmpose_bottom_up(key):
+
+    from mmpose.apis import init_pose_model, inference_bottom_up_pose_model
+    from tqdm import tqdm
+
+    from pose_pipeline import MODEL_DATA_DIR
+    pose_cfg = os.path.join(MODEL_DATA_DIR, 'mmpose/config/bottom_up/higherhrnet/coco/higher_hrnet48_coco_512x512.py')
+    pose_ckpt = os.path.join(MODEL_DATA_DIR, 'mmpose/checkpoints/higher_hrnet48_coco_512x512-60fedcbc_20200712.pth')
+
+    model = init_pose_model(pose_cfg, pose_ckpt)
+
+    video = Video.get_robust_reader(key, return_cap=False)
+    cap = cv2.VideoCapture(video)
+
+    video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    keypoints = []
+    for frame_id in tqdm(range(video_length)):
+
+        # should match the length of identified person tracks
+        ret, frame = cap.read()
+        assert ret and frame is not None
+        
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        
+        res = inference_bottom_up_pose_model(model, frame)[0]
+
+        kps = np.stack([x['keypoints'] for x in res], axis=0)
+        keypoints.append(kps)
+
+    cap.release()
+    os.remove(video)
+
+    return np.asarray(keypoints)
+    

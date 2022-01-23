@@ -113,6 +113,46 @@ class VideoInfo(dj.Computed):
 
 
 @schema
+class BottomUpMethodLookup(dj.Lookup):
+    definition = '''
+    bottom_up_method_name : varchar(50)
+    '''
+    contents = [
+        {'bottom_up_method_name': 'OpenPose'},
+        {'bottom_up_method_name': 'MMPose'}]
+
+
+@schema
+class BottomUpMethod(dj.Manual):
+    definition = '''
+    -> Video
+    -> BottomUpMethodLookup
+    '''
+
+
+@schema
+class BottomUpPeople(dj.Computed):
+    definition = '''
+    -> BottomUpMethod
+    ---
+    keypoints                   : longblob
+    timestamp=CURRENT_TIMESTAMP : timestamp    # automatic timestamp
+    '''
+
+    def make(self, key):
+
+        if key['bottom_up_method_name'] == 'OpenPose':
+            raise Exception('OpenPose wrapper not implemented yet')
+        elif key['bottom_up_method_name'] == 'MMPose':
+            from .wrappers.mmpose import mmpose_bottom_up
+            key['keypoints'] = mmpose_bottom_up(key)
+        else:
+            raise Exception("Method not implemented")
+
+        self.insert1(key)
+
+
+@schema
 class OpenPose(dj.Computed):
     definition = '''
     -> Video
@@ -142,50 +182,6 @@ class OpenPose(dj.Computed):
 
         # remove the downloaded video to avoid clutter
         os.remove(video)
-
-
-@schema
-class MMPoseBottomUpPerson(dj.Computed):
-    definition = """
-    -> Video
-    ---
-    keypoints          : longblob
-    """
-
-    def make(self, key):
-        
-        from mmpose.apis import init_pose_model, inference_bottom_up_pose_model
-        from tqdm import tqdm
-
-        mmpose_files = os.path.join(os.path.split(__file__)[0], '../3rdparty/mmpose/')
-        pose_cfg = os.path.join(mmpose_files, 'config/bottom_up/higherhrnet/coco/higher_hrnet48_coco_512x512.py')
-        pose_ckpt = os.path.join(mmpose_files, 'checkpoints/higher_hrnet48_coco_512x512-60fedcbc_20200712.pth')
-
-        model = init_pose_model(pose_cfg, pose_ckpt)
-
-        video = Video.get_robust_reader(key, return_cap=False)
-        cap = cv2.VideoCapture(video)
-
-        video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
-        keypoints = []
-        for frame_id in tqdm(range(video_length)):
-
-            # should match the length of identified person tracks
-            ret, frame = cap.read()
-            assert ret and frame is not None
-            
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                            
-            res = inference_bottom_up_pose_model(model, frame)[0]
-
-            kps = np.stack([x['keypoints'] for x in res], axis=0)
-            keypoints.append(kps)
-
-        key['keypoints'] = keypoints
-
-        os.remove(video)
-        self.insert1(key)
 
 
 @schema
@@ -629,10 +625,10 @@ class TopDownPerson(dj.Computed):
     def make(self, key):
 
         if (TopDownMethodLookup & key).fetch1('top_down_method_name') == 'MMPose':
-            from .wrappers.mmpose_top_down import mmpose_top_down_person
+            from .wrappers.mmpose import mmpose_top_down_person
             key['keypoints'] = mmpose_top_down_person(key)
         elif (TopDownMethodLookup & key).fetch1('top_down_method_name') == 'MMPoseWholebody':
-            from .wrappers.mmpose_top_down import mmpose_whole_body
+            from .wrappers.mmpose import mmpose_whole_body
             key['keypoints'] = mmpose_whole_body(key)
         else:
             raise Exception("Method not implemented")
@@ -981,67 +977,6 @@ class CenterHMRPersonVideo(dj.Computed):
         os.remove(out_file_name)
         os.remove(video)
 
-
-@schema
-class PoseWarperPerson(dj.Computed):
-    definition = '''
-    -> PersonBbox
-    ---
-    keypoints        : longblob
-    '''
-
-    def make(self, key):
-
-        from pose_pipeline.wrappers.posewarper import posewarper_track
-
-        video = Video.get_robust_reader(key, return_cap=False)
-        bbox, present = (PersonBbox & key).fetch1('bbox', 'present')
-
-        key['keypoints'] = posewarper_track(video, bbox, present)
-
-        self.insert1(key)
-
-        os.remove(video)
-
-@schema
-class PoseWarperPersonVideo(dj.Computed):
-    definition = '''
-    -> PoseWarperPerson
-    -> BlurredVideo
-    ----
-    output_video      : attach@localattach    # datajoint managed video file
-    '''
-
-    def make(self, key):
-        out_file_name = PoseWarperPersonVideo.make_video(key)
-        key['output_video'] = out_file_name
-        self.insert1(key)
-
-        os.remove(out_file_name)
-    
-    @staticmethod
-    def make_video(key, downsample=4, thresh=0.1):
-        """ Create an overlay video """
-
-        from pose_pipeline.utils.visualization import video_overlay
-
-        video = (BlurredVideo & key).fetch1('output_video')
-        keypoints = (PoseWarperPerson & key).fetch1('keypoints')
-
-        def overlay(image, idx, radius=10):
-            image = image.copy()
-            for i in range(keypoints.shape[1]):
-                if keypoints[idx, i, -1] > thresh:
-                    cv2.circle(image, (int(keypoints[idx, i, 0]), int(keypoints[idx, i, 1])), radius, (0, 0, 0), -1)
-                    cv2.circle(image, (int(keypoints[idx, i, 0]), int(keypoints[idx, i, 1])), radius-2, (255, 255, 255), -1)
-            return image
-
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
-        video_overlay(video, out_file_name, overlay, downsample=downsample)
-
-        os.remove(video)
-
-        return out_file_name
 
 @schema
 class ExposePerson(dj.Computed):
