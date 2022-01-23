@@ -248,10 +248,12 @@ class TrackingBboxMethodLookup(dj.Lookup):
     '''
     contents = [
         {'tracking_method': 0, 'tracking_method_name': 'DeepSortYOLOv4'},
-        {'tracking_method': 1, 'tracking_method_name': 'MMTrack'},
+        {'tracking_method': 1, 'tracking_method_name': 'MMTrack_tracktor'},
         {'tracking_method': 2, 'tracking_method_name': 'FairMOT'},
         {'tracking_method': 3, 'tracking_method_name': 'TransTrack'},
         {'tracking_method': 4, 'tracking_method_name': 'TraDeS'},
+        {'tracking_method': 5, 'tracking_method_name': 'MMTrack_deepsort'},
+        {'tracking_method': 6, 'tracking_method_name': 'MMTrack_bytetrack'}
     ]
 
 @schema
@@ -280,9 +282,19 @@ class TrackingBbox(dj.Computed):
             tracks = tracking_bounding_boxes(video)
             key['tracks'] = tracks
 
-        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'MMTrack':
+        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') in 'MMTrack_tracktor':
             from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
-            tracks = mmtrack_bounding_boxes(video)
+            tracks = mmtrack_bounding_boxes(video, 'tracktor')
+            key['tracks'] = tracks
+
+        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'MMTrack_deepsort':
+            from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
+            tracks = mmtrack_bounding_boxes(video, 'deepsort')
+            key['tracks'] = tracks
+
+        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'MMTrack_bytetrack':
+            from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
+            tracks = mmtrack_bounding_boxes(video, 'bytetrack')
             key['tracks'] = tracks
 
         elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'FairMOT':

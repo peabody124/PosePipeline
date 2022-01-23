@@ -4,11 +4,18 @@ import numpy as np
 from tqdm import tqdm
 import mmtrack.apis
 
-def mmtrack_bounding_boxes(file_path):
+def mmtrack_bounding_boxes(file_path, method='tracktor'):
     
     from pose_pipeline import MODEL_DATA_DIR
-    model_config = os.path.join(MODEL_DATA_DIR, 'mmtracking/mot/tracktor/tracktor_faster-rcnn_r50_fpn_4e_mot17-private.py')
-    
+
+    if method == 'tracktor':
+        model_config = os.path.join(MODEL_DATA_DIR, 'mmtracking/mot/tracktor/tracktor_faster-rcnn_r50_fpn_4e_mot17-private.py')
+    elif method == 'deepsort':
+        model_config = os.path.join(MODEL_DATA_DIR, 'mmtracking/mot/deepsort/deepsort_faster-rcnn_fpn_4e_mot17-private-half.py')
+    elif method == 'bytetrack':
+        model_config = os.path.join(MODEL_DATA_DIR, 'mmtracking/mot/bytetrack/bytetrack_yolox_x_crowdhuman_mot17-private.py')
+    else:
+        raise Exception(f'Unknown config file for MMTrack method {method}')
     model = mmtrack.apis.init_model(model_config)
 
     cap = cv2.VideoCapture(file_path)
@@ -26,8 +33,8 @@ def mmtrack_bounding_boxes(file_path):
         
         result = mmtrack.apis.inference_mot(model, frame, frame_id)
         
-        assert len(result['track_results']) == 1
-        track_results = result['track_results'][0]
+        assert len(result['track_bboxes']) == 1
+        track_results = result['track_bboxes'][0]
         
         tracks.append(
             [{'track_id': int(x[0]),

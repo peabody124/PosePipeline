@@ -1,7 +1,6 @@
 model = dict(
     detector=dict(
         type='FasterRCNN',
-        pretrained='torchvision://resnet50',
         backbone=dict(
             type='ResNet',
             depth=50,
@@ -12,7 +11,9 @@ model = dict(
             frozen_stages=1,
             norm_cfg=dict(type='BN', requires_grad=True),
             norm_eval=True,
-            style='pytorch'),
+            style='pytorch',
+            init_cfg=dict(
+                type='Pretrained', checkpoint='torchvision://resnet50')),
         neck=dict(
             type='ChannelMapper',
             in_channels=[2048],
@@ -79,11 +80,9 @@ model = dict(
                 pos_weight=-1,
                 debug=False),
             rpn_proposal=dict(
-                nms_across_levels=False,
                 nms_pre=6000,
-                nms_post=600,
-                max_num=600,
-                nms_thr=0.7,
+                max_per_img=600,
+                nms=dict(type='nms', iou_threshold=0.7),
                 min_bbox_size=0),
             rcnn=dict(
                 assigner=dict(
@@ -102,11 +101,9 @@ model = dict(
                 debug=False)),
         test_cfg=dict(
             rpn=dict(
-                nms_across_levels=False,
                 nms_pre=6000,
-                nms_post=300,
-                max_num=300,
-                nms_thr=0.7,
+                max_per_img=300,
+                nms=dict(type='nms', iou_threshold=0.7),
                 min_bbox_size=0),
             rcnn=dict(
                 score_thr=0.0001,
