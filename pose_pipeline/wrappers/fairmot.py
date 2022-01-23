@@ -69,6 +69,15 @@ def fairmot_bounding_boxes(file_path):
 
     tracks = []
 
+    cap = cv2.VideoCapture(file_path)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.release()
+
+    if height > width:
+        opt.img_size = (608, 1088)
+
     with add_path([os.environ['FAIRMOT_PATH'], os.environ['DCNv2_PATH']]):
         import datasets.dataset.jde as datasets
         from tracking_utils.log import logger
@@ -77,7 +86,7 @@ def fairmot_bounding_boxes(file_path):
 
         # suppress logging output
         logger.setLevel(logging.INFO)
-
+            
         # set up the data loader
         dataloader = datasets.LoadVideo(file_path, opt.img_size)
         fps = dataloader.frame_rate
@@ -98,7 +107,6 @@ def fairmot_bounding_boxes(file_path):
         for frame_id, (path, img, img0) in tqdm(enumerate(dataloader)):
 
             blob = torch.from_numpy(img).cuda().unsqueeze(0)
-            #lob = torch.from_numpy(img).unsqueeze(0)
 
             online_targets = tracker.update(blob, img0)
 
@@ -108,7 +116,7 @@ def fairmot_bounding_boxes(file_path):
                 tlwh = t.tlwh
                 vertical = tlwh[2] / tlwh[3] > 1.6
 
-                if tlwh[2] * tlwh[3] > opt.min_box_area and not vertical:
+                if True: #tlwh[2] * tlwh[3] > opt.min_box_area: # and not vertical:
                     x1, y1, w, h = tlwh
 
                     # Note: this is using the name "TLHW" consistent with the other algorithms in the
