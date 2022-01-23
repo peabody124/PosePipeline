@@ -14,13 +14,6 @@ from .env import add_path
 
 schema = dj.schema('pose_pipeline')
 
-dj.config['stores'] = {
-    'localattach': {
-        'protocol': 'file',
-        'location': '/mnt/08b179d4-cd3b-4ff2-86b5-e7eadb020223/pose_videos/dj'
-    }
-}
-
 
 @schema
 class Video(dj.Manual):
