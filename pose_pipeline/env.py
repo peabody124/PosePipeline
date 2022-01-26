@@ -31,6 +31,7 @@ def set_environmental_variables():
     os.environ["POSEFORMER_PATH"] = '/home/jcotton/projects/pose/PoseFormer'
     os.environ["VIBE_PATH"] = '/home/jcotton/projects/pose/VIBE'
     os.environ["MEVA_PATH"] = '/home/jcotton/projects/pose/MEVA'
+    os.environ["PARE_PATH"] = '/home/jcotton/projects/pose/PARE'
     os.environ["FAIRMOT_PATH"] = '/home/jcotton/projects/pose/FairMOT/src/lib'
     os.environ["DCNv2_PATH"] = '/home/jcotton/projects/pose/DCNv2/DCN'
     os.environ["TRANSTRACK_PATH"] = '/home/jcotton/projects/pose/TransTrack'

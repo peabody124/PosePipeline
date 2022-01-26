@@ -712,7 +712,8 @@ class SMPLMethodLookup(dj.Lookup):
                 {'smpl_method': 1, 'smpl_method_name': 'MEVA'},
                 {'smpl_method': 2, 'smpl_method_name': "ProHMR"},
                 {'smpl_method': 2, 'smpl_method_name': "ProHMR_MMPose"},
-                {'smpl_method': 3, 'smpl_method_name': "Expose"}]
+                {'smpl_method': 3, 'smpl_method_name': "Expose"},
+                {'smpl_method': 4, 'smpl_method_name': "PARE"}]
 
 
 @schema
@@ -769,7 +770,13 @@ class SMPLPerson(dj.Computed):
             from .wrappers.expose import process_expose
             res = process_expose(key)
             res['model_type'] = 'SMPL-X'
-            
+
+        elif smpl_method_name == 'PARE':
+
+            from .wrappers.pare import process_pare
+            res = process_pare(key)
+            res['model_type'] = 'SMPL'
+
         else:
             raise Exception(f"Method {smpl_method_name} not implemented")
 
