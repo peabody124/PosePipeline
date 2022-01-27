@@ -29,25 +29,25 @@ class Video(dj.Manual):
     def make_entry(filepath, session_id=None):
         from datetime import datetime
         import os
-        
+
         _, fn = os.path.split(filepath)
         date = datetime.strptime(fn[:16], '%Y%m%d-%H%M%SZ')
         d = {'filename': fn, 'video': filepath, 'start_time': date}
         if session_id is not None:
             d.update({'session_id': session_id})
         return d
-    
+
     @staticmethod
     def get_robust_reader(key, return_cap=True):
         import subprocess
         import tempfile
-        
+
         # fetch video and place in temp directory
-        video = (Video & key).fetch1('video')        
+        video = (Video & key).fetch1('video')
         _, outfile = tempfile.mkstemp(suffix='.mp4')
         subprocess.run(['mv', video, outfile])
         video = outfile
-        
+
         cap = cv2.VideoCapture(video)
 
         # check all the frames are readable
@@ -70,7 +70,7 @@ class Video(dj.Manual):
                 break
 
         if return_cap:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0) 
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             return cap
         else:
             cap.release()
@@ -91,7 +91,7 @@ class VideoInfo(dj.Computed):
     '''
 
     def make(self, key):
-        
+
         video, start_time = (Video & key).fetch1('video', 'start_time')
 
         cap = cv2.VideoCapture(video)
@@ -104,7 +104,7 @@ class VideoInfo(dj.Computed):
         self.insert1(key)
 
         os.remove(video)
-        
+
     def fetch_timestamps(self):
         assert len(self) == 1, "Restrict to single entity"
         timestamps = self.fetch1('timestamps')
@@ -125,7 +125,7 @@ class OpenPose(dj.Computed):
     '''
 
     def make(self, key):
-        
+
         video = Video.get_robust_reader(key, return_cap=False)
 
         with add_path(os.path.join(os.environ['OPENPOSE_PATH'], 'build/python')):
@@ -137,7 +137,7 @@ class OpenPose(dj.Computed):
         key['pose_scores'] = [r['pose_scores'] for r in res]
         key['hand_keypoints'] = [r['hand_keypoints'] for r in res]
         key['face_keypoints'] = [r['face_keypoints'] for r in res]
-        
+
         self.insert1(key)
 
         # remove the downloaded video to avoid clutter
@@ -153,7 +153,7 @@ class MMPoseBottomUpPerson(dj.Computed):
     """
 
     def make(self, key):
-        
+
         from mmpose.apis import init_pose_model, inference_bottom_up_pose_model
         from tqdm import tqdm
 
@@ -167,16 +167,16 @@ class MMPoseBottomUpPerson(dj.Computed):
         cap = cv2.VideoCapture(video)
 
         video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
+
         keypoints = []
         for frame_id in tqdm(range(video_length)):
 
             # should match the length of identified person tracks
             ret, frame = cap.read()
             assert ret and frame is not None
-            
+
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                            
+
             res = inference_bottom_up_pose_model(model, frame)[0]
 
             kps = np.stack([x['keypoints'] for x in res], axis=0)
@@ -200,7 +200,7 @@ class BlurredVideo(dj.Computed):
     def make(self, key):
 
         from pose_pipeline.utils.visualization import video_overlay
-        
+
         video = Video.get_robust_reader(key, return_cap=False)
         keypoints = (OpenPose & key).fetch1('keypoints')
 
@@ -208,7 +208,7 @@ class BlurredVideo(dj.Computed):
             image = image.copy()
             if keypoints[idx] is None:
                 return image
-                
+
             found_noses = keypoints[idx][:, 0, -1] > 0.1
             nose_positions = keypoints[idx][found_noses, 0, :2]
             neck_positions = keypoints[idx][found_noses, 1, :2]
@@ -269,47 +269,48 @@ class TrackingBbox(dj.Computed):
     def make(self, key):
 
         video = Video.get_robust_reader(key, return_cap=False)
+        tracking_method = (TrackingBboxMethodLookup & key).fetch1('tracking_method_name')
 
-        if (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'DeepSortYOLOv4':
+        if tracking_method == 'DeepSortYOLOv4':
             from pose_pipeline.wrappers.deep_sort_yolov4.parser import tracking_bounding_boxes
             tracks = tracking_bounding_boxes(video)
             key['tracks'] = tracks
 
-        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') in 'MMTrack_tracktor':
+        elif tracking_method == 'MMTrack_tracktor':
             from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
             tracks = mmtrack_bounding_boxes(video, 'tracktor')
             key['tracks'] = tracks
 
-        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'MMTrack_deepsort':
+        elif tracking_method == 'MMTrack_deepsort':
             from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
             tracks = mmtrack_bounding_boxes(video, 'deepsort')
             key['tracks'] = tracks
 
-        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'MMTrack_bytetrack':
+        elif tracking_method == 'MMTrack_bytetrack':
             from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
             tracks = mmtrack_bounding_boxes(video, 'bytetrack')
             key['tracks'] = tracks
 
-        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'FairMOT':
+        elif tracking_method == 'FairMOT':
             from pose_pipeline.wrappers.fairmot import fairmot_bounding_boxes
             tracks = fairmot_bounding_boxes(video)
             key['tracks'] = tracks
 
-        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'TransTrack':
+        elif tracking_method == 'TransTrack':
             from pose_pipeline.wrappers.transtrack import transtrack_bounding_boxes
             tracks = transtrack_bounding_boxes(video)
             key['tracks'] = tracks
 
-        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'TraDeS':
+        elif tracking_method == 'TraDeS':
             from pose_pipeline.wrappers.trades import trades_bounding_boxes
             tracks = trades_bounding_boxes(video)
             key['tracks'] = tracks
-                        
+
         else:
             os.remove(video)
             raise Exception(f"Unsupported tracking method: {key['tracking_method']}")
 
-        track_ids = np.unique([t['track_id'] for track in tracks for t in track])
+        track_ids = set(t['track_id'] for track in tracks for t in track)
         key['num_tracks'] = len(track_ids)
 
         self.insert1(key)
@@ -336,12 +337,12 @@ class TrackingBboxVideo(dj.Computed):
         video = (BlurredVideo & key).fetch1('output_video')
         tracks = (TrackingBbox & key).fetch1('tracks')
 
-        N = len(np.unique([t['track_id'] for track in tracks for t in track]))
+        N = len(set(t['track_id'] for track in tracks for t in track))
         colors = matplotlib.cm.get_cmap('hsv', lut=N)
-        
-        def overlay_callback(image, idx):    
+
+        def overlay_callback(image, idx):
             image = image.copy()
-            
+
             for track in tracks[idx]:
                 c = colors(track['track_id'])
                 c = (int(c[0] * 255.0), int(c[1] * 255.0), int(c[2] * 255.0))
@@ -349,7 +350,7 @@ class TrackingBboxVideo(dj.Computed):
                 bbox = track['tlbr']
                 cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), 6)
                 cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), c, 3)
-                
+
                 label = str(track['track_id'])
                 textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
                 x = int((bbox[0] + bbox[2]) / 2 - textsize[0] / 2)
@@ -391,24 +392,24 @@ class PersonBbox(dj.Computed):
     '''
 
     def make(self, key):
-        
+
         tracks = (TrackingBbox & key).fetch1('tracks')
         keep_tracks = (PersonBboxValid & key).fetch1('keep_tracks')
 
         def extract_person_track(tracks):
-            
+
             def process_timestamp(track_timestep):
                 valid = [t for t in track_timestep if t['track_id'] in keep_tracks]
                 if len(valid) == 1:
                     return {'present': True, 'bbox': valid[0]['tlhw']}
                 else:
                     return {'present': False, 'bbox': [0.0, 0.0, 0.0, 0.0]}
-                
+
             return [process_timestamp(t) for t in tracks]
 
-        LD = main_track = extract_person_track(tracks) 
+        LD = main_track = extract_person_track(tracks)
         dict_lists = {k: [dic[k] for dic in LD] for k in LD[0]}
-       
+
         present = np.array(dict_lists['present'])
         bbox =  np.array(dict_lists['bbox'])
 
@@ -434,7 +435,7 @@ class PersonBbox(dj.Computed):
             bbox[2:] = bbox[:2] + bbox[2:]
             if np.any(np.isnan(bbox)):
                 return image
-            
+
             cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), 6)
             return image
 
@@ -458,13 +459,13 @@ class DetectedFrames(dj.Computed):
     median_confidence      : float
     frame_data             : longblob
     '''
-    
+
     def make(self, key):
-        
+
         if (PersonBboxValid & key).fetch1('video_subject_id') < 0:
             key['frames_detected'] = 0
             key['frames_missed'] = (VideoInfo & key).fetch1('num_frames')
-                    
+
         # compute statistics
         tracks = (TrackingBbox & key).fetch1('tracks')
         keep_tracks = (PersonBboxValid & key).fetch1('keep_tracks')
@@ -486,18 +487,18 @@ class DetectedFrames(dj.Computed):
 
         stats = extract_person_stats(tracks)
         present = np.array([x['present'] for x in stats])
-        
+
         key['frames_detected'] = np.sum(present)
         key['frames_missed'] = np.sum(~present)
         key['fraction_found'] = key['frames_detected'] / (key['frames_missed'] + key['frames_detected'])
-        
+
         if key['frames_detected'] > 0:
             key['median_confidence'] = np.median([x['confidence'] for x in stats if x['present']])
         else:
             key['median_confidence'] = 0.0
         key['mean_other_people'] = np.nanmean([x['others'] for x in stats])
         key['frame_data'] = stats
-        
+
         self.insert1(key)
 
     @property
@@ -509,19 +510,19 @@ class BestDetectedFrames(dj.Computed):
     definition = '''
     -> DetectedFrames
     '''
-    
+
     def make(self, key):
         detected_frames = (DetectedFrames & key).fetch('fraction_found', 'KEY', as_dict=True)
-        
+
         best = np.argmax([d['fraction_found'] for d in detected_frames])
         res = detected_frames[best]
         res.pop('fraction_found')
         self.insert1(res)
-        
+
     @property
     def key_source(self):
         return Video & DetectedFrames
-        
+
 @schema
 class OpenPosePerson(dj.Computed):
     definition = '''
@@ -540,7 +541,7 @@ class OpenPosePerson(dj.Computed):
         bbox = (PersonBbox & key).fetch1('bbox')
 
         res = [match_keypoints_to_bbox(bbox[idx], keypoints[idx]) for idx in range(bbox.shape[0])]
-        keypoints, openpose_ids = list(zip(*res)) 
+        keypoints, openpose_ids = list(zip(*res))
 
         keypoints = np.array(keypoints)
         openpose_ids = np.array(openpose_ids)
@@ -558,7 +559,7 @@ class OpenPosePerson(dj.Computed):
         key['hand_keypoints'] = np.asarray(key['hand_keypoints'])
 
         self.insert1(key)
-        
+
 
 @schema
 class OpenPosePersonVideo(dj.Computed):
@@ -574,11 +575,11 @@ class OpenPosePersonVideo(dj.Computed):
         from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
 
         # fetch data     
-        keypoints, hand_keypoints = (OpenPosePerson & key).fetch1('keypoints', 'hand_keypoints')        
+        keypoints, hand_keypoints = (OpenPosePerson & key).fetch1('keypoints', 'hand_keypoints')
         video_filename = (BlurredVideo & key).fetch1('output_video')
 
         _, fname = tempfile.mkstemp(suffix='.mp4')
-        
+
         video = (BlurredVideo & key).fetch1('output_video')
         keypoints = (OpenPosePerson & key).fetch1('keypoints')
 
@@ -645,7 +646,7 @@ class TopDownPerson(dj.Computed):
                 "Left Elbow", "Right Elbow", "Left Wrist", "Right Wrist", "Left Hip", "Right Hip", "Left Knee",
                 "Right Knee", "Left Ankle", "Right Ankle"]
 
-    
+
 @schema
 class LiftingMethodLookup(dj.Lookup):
     definition = '''
@@ -657,7 +658,7 @@ class LiftingMethodLookup(dj.Lookup):
         {'lifting_method': 0, 'lifting_method_name': 'GastNet'},
         {'lifting_method': 1, 'lifting_method_name': 'VideoPose3D'},
         {'lifting_method': 2, 'lifting_method_name': 'PoseAug'},
-        
+
     ]
 
 
@@ -679,19 +680,20 @@ class LiftingPerson(dj.Computed):
     '''
 
     def make(self, key):
+        method = (LiftingMethodLookup & key).fetch1('lifting_method_name')
 
-        if (LiftingMethodLookup & key).fetch1('lifting_method_name') == 'RIE':
+        if method == 'RIE':
             from .wrappers.rie_lifting import process_rie
             results = process_rie(key)
-        elif (LiftingMethodLookup & key).fetch1('lifting_method_name') == 'GastNet':
+        elif method == 'GastNet':
             from .wrappers.gastnet_lifting import process_gastnet
             results = process_gastnet(key)
-        elif (LiftingMethodLookup & key).fetch1('lifting_method_name') == 'VideoPose3D':
+        elif method == 'VideoPose3D':
             from .wrappers.videopose3d import process_videopose3d
-            results = process_videopose3d(key)            
-        elif (LiftingMethodLookup & key).fetch1('lifting_method_name') == 'PoseAug':
+            results = process_videopose3d(key)
+        elif method == 'PoseAug':
             from .wrappers.poseaug import process_poseaug
-            results = process_poseaug(key)       
+            results = process_poseaug(key)
         else:
             raise Exception(f"Method not implemented {key}")
 
@@ -702,8 +704,8 @@ class LiftingPerson(dj.Computed):
         """ Lifting layers use Human3.6 ordering """
         return ['Hip (root)', 'Right hip', 'Right knee', 'Right foot', 'Left hip', 'Left knee', 'Left foot', 'Spine', 'Thorax',
                 'Nose', 'Head', 'Left shoulder', 'Left elbow', 'Left wrist', 'Right shoulder', 'Right elbow', 'Right wrist']
-    
-    
+
+
 ## Classes that handle SMPL meshed based tracking
 @schema
 class SMPLMethodLookup(dj.Lookup):
@@ -762,7 +764,7 @@ class SMPLPerson(dj.Computed):
             from .wrappers.prohmr import process_prohmr
             res = process_prohmr(key)
             res['model_type'] = 'SMPL'
-            
+
         elif smpl_method_name == 'ProHMR_MMPose':
             from .wrappers.prohmr import process_prohmr_mmpose
             res = process_prohmr_mmpose(key)
@@ -773,7 +775,7 @@ class SMPLPerson(dj.Computed):
             from .wrappers.expose import process_expose
             res = process_expose(key)
             res['model_type'] = 'SMPL-X'
-            
+
         else:
             raise Exception(f"Method {smpl_method_name} not implemented")
 
@@ -806,9 +808,9 @@ class SMPLPersonVideo(dj.Computed):
     def make(self, key):
 
         from pose_pipeline.utils.visualization import video_overlay
-        
+
         poses, betas, cams = (SMPLPerson & key).fetch1('poses', 'betas', 'cams')
-        
+
         smpl_method_name = (SMPLMethodLookup & key).fetch1('smpl_method_name')
         if smpl_method_name == 'ProHMR':
             from .wrappers.prohmr import get_prohmr_smpl_callback
@@ -819,9 +821,9 @@ class SMPLPersonVideo(dj.Computed):
         else:
             from pose_pipeline.utils.visualization import get_smpl_callback
             callback = get_smpl_callback(key, poses, betas, cams)
-            
+
         video = (BlurredVideo & key).fetch1('output_video')
-        
+
         fd, out_file_name = tempfile.mkstemp(suffix='.mp4')
         video_overlay(video, out_file_name, callback, downsample=1)
         key['output_video'] = out_file_name
@@ -843,7 +845,7 @@ class CenterHMR(dj.Computed):
 
     def make(self, key):
 
-        with add_path([os.path.join(os.environ['CENTERHMR_PATH'], 'src'), 
+        with add_path([os.path.join(os.environ['CENTERHMR_PATH'], 'src'),
                        os.path.join(os.environ['CENTERHMR_PATH'], 'src/core')]):
             from pose_pipeline.wrappers.centerhmr import centerhmr_parse_video
 
@@ -880,7 +882,7 @@ class CenterHMRPerson(dj.Computed):
 
         width, height = (VideoInfo & key).fetch1('width', 'height')
 
-        def convert_keypoints_to_image(keypoints, imsize=[width, height]):    
+        def convert_keypoints_to_image(keypoints, imsize=[width, height]):
             mp = np.array(imsize) * 0.5
             scale = np.max(np.array(imsize)) * 0.5
 
@@ -897,9 +899,9 @@ class CenterHMRPerson(dj.Computed):
         all_matches = [match_keypoints_to_bbox(bbox[idx], convert_keypoints_to_image(pj2d[idx]), visible=False)
                        for idx in range(bbox.shape[0])]
 
-        keypoints, centerhmr_ids = list(zip(*all_matches)) 
+        keypoints, centerhmr_ids = list(zip(*all_matches))
 
-        key['poses'] = np.asarray([res['params']['body_pose'][id] 
+        key['poses'] = np.asarray([res['params']['body_pose'][id]
                                    if id is not None else np.array([np.nan] * 69) * np.nan
                                    for res, id in zip(hmr_results, centerhmr_ids)])
         key['betas'] = np.asarray([res['params']['betas'][id]
@@ -933,17 +935,17 @@ class CenterHMRPersonVideo(dj.Computed):
     '''
 
     def make(self, key):
-            
+
         from pose_estimation.util.pyrender_renderer import PyrendererRenderer
         from pose_estimation.body_models.smpl import SMPL
         from pose_pipeline.utils.visualization import video_overlay
 
         # fetch data     
-        pose_data = (CenterHMRPerson & key).fetch1()        
+        pose_data = (CenterHMRPerson & key).fetch1()
         video_filename = (BlurredVideo & key).fetch1('output_video')
 
         _, fname = tempfile.mkstemp(suffix='.mp4')
-        
+
         video = (BlurredVideo & key).fetch1('output_video')
 
         smpl = SMPL()
@@ -954,7 +956,7 @@ class CenterHMRPersonVideo(dj.Computed):
 
             if np.any(np.isnan(body_pose)):
                 return image
-            
+
             h, w = image.shape[:2]
             if overlay.renderer is None:
                 overlay.renderer = PyrendererRenderer(smpl.get_faces(), (h, w))
@@ -968,7 +970,7 @@ class CenterHMRPersonVideo(dj.Computed):
             else:
                 cam[0] = 1.1 ** cam[0]
                 cam[1] = (1.1 ** cam[1]) * (w / h)
-            
+
             return overlay.renderer(verts, cam, img=image)
         overlay.renderer = None
 
@@ -1003,6 +1005,7 @@ class PoseWarperPerson(dj.Computed):
 
         os.remove(video)
 
+
 @schema
 class PoseWarperPersonVideo(dj.Computed):
     definition = '''
@@ -1018,7 +1021,7 @@ class PoseWarperPersonVideo(dj.Computed):
         self.insert1(key)
 
         os.remove(out_file_name)
-    
+
     @staticmethod
     def make_video(key, downsample=4, thresh=0.1):
         """ Create an overlay video """
@@ -1125,12 +1128,12 @@ class TopDownPersonVideo(dj.Computed):
     """
 
     def make(self, key):
-        
+
         from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
 
         video = (BlurredVideo & key).fetch1('output_video')
         keypoints = (TopDownPerson & key).fetch1('keypoints')
-        
+
         bbox_fn = PersonBbox.get_overlay_fn(key)
 
         def overlay_fn(image, idx):
@@ -1184,17 +1187,17 @@ class GastNetPerson(dj.Computed):
                     channels = 64
                 else:
                     raise ValueError('Only support 27 and 81 receptive field models for inference!')
-                    
+
                 skeleton = Skeleton(parents=[-1, 0, 1, 2, 0, 4, 5, 0, 7, 8, 9, 8, 11, 12, 8, 14, 15],
                                     joints_left=[6, 7, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22, 23],
                                     joints_right=[1, 2, 3, 4, 5, 24, 25, 26, 27, 28, 29, 30, 31])
                 adj = adj_mx_from_skeleton(skeleton)
 
                 model_pos = SpatioTemporalModel(adj, 17, 2, 17, filter_widths=filters_width, channels=channels, dropout=0.05)
-                
+
                 checkpoint = torch.load(chk)
                 model_pos.load_state_dict(checkpoint['model_pos'])
-                
+
                 if torch.cuda.is_available():
                     model_pos = model_pos.cuda()
                 model_pos.eval()
@@ -1290,7 +1293,7 @@ class GastNetPersonVideo(dj.Computed):
     ---
     output_video      : attach@localattach    # datajoint managed video file
     """
-    
+
     def make(self, key):
 
         keypoints = (TopDownPerson & key).fetch1('keypoints')
@@ -1356,11 +1359,11 @@ class PoseFormerPerson(dj.Computed):
         def coco_h36m(keypoints):
             # adopted from https://github.com/fabro66/GAST-Net-3DPoseEstimation/blob/97a364affe5cd4f68fab030e0210187333fff25e/tools/mpii_coco_h36m.py#L20
             # MIT License
-            
+
             spple_keypoints = [10, 8, 0, 7]
             h36m_coco_order = [9, 11, 14, 12, 15, 13, 16, 4, 1, 5, 2, 6, 3]
             coco_order = [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-        
+
             temporal = keypoints.shape[0]
             keypoints_h36m = np.zeros_like(keypoints, dtype=np.float32)
             htps_keypoints = np.zeros((temporal, 4, 2), dtype=np.float32)
@@ -1429,7 +1432,7 @@ class PoseFormerPerson(dj.Computed):
         """ PoseFormer follows the output format of Video3D and uses Human3.6 ordering """
         return ['Hip (root)', 'Right hip', 'Right knee', 'Right foot', 'Left hip', 'Left knee', 'Left foot', 'Spine', 'Thorax', 'Nose', 'Head', 'Left shoulder', 'Left elbow', 'Left wrist', 'Right shoulder', 'Right elbow', 'Right wrist']
 
-    
+
 @schema
 class WalkingSegments(dj.Computed):
     definition = '''
@@ -1441,12 +1444,12 @@ class WalkingSegments(dj.Computed):
     walking_prob           : longblob
     num_walking_frames     : int
     '''
-    
+
     def make(self, key):
 
         from gait_analysis.walking_segments import get_gait_phases
         from scipy.signal import hilbert, medfilt
-        
+
         keypoints3d, keypoints_valid = (GastNetPerson & key).fetch1('keypoints_3d', 'keypoints_valid')
         phases = get_gait_phases(keypoints3d)
 
@@ -1468,9 +1471,9 @@ class WalkingSegments(dj.Computed):
 
         def deglitch(x):
             return medfilt(x,3)
-        
+
         thresh = deglitch(hyst(deglitch(walking_prob), 0.95, 0.75))
-        
+
         keep_idx = np.nonzero(thresh)[0]
         if len(keep_idx) > 0:
             breaks = np.where(np.diff(keep_idx) != 1)[0]
@@ -1486,7 +1489,7 @@ class WalkingSegments(dj.Computed):
             key['walking_frames'] = []
             key['segment_boundaries'] = []
             key['num_walking_frames'] = 0
-            
+
         key['phases'] = phases
         key['walking_prob'] = walking_prob
 
@@ -1501,39 +1504,39 @@ class WalkingSegmentsVideo(dj.Computed):
     output_video      : attach@localattach    # datajoint managed video file
     '''
 
-    
+
     def make(self, key):
-        
+
         from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
         import tempfile
-        
+
         height, width, timestamps = (VideoInfo & key).fetch1('height', 'width', 'timestamps')
         coco_keypoints = (TopDownPerson & key).fetch1('keypoints')
         phases, walking_frames = (WalkingSegments & key).fetch1('phases', 'walking_frames')
-        
+
         bbox_fn = PersonBbox.get_overlay_fn(key)
 
         phases = np.reshape(phases, [-1, 4, 2])
         phases = np.arctan2(phases[:, :, 1], phases[:, :, 0])
         left_down = phases[:, 0] < phases[:, 2]
         right_down = phases[:, 1] < phases[:, 3]
-        
+
         ankle_idx = [TopDownPerson.joint_names().index(j) for j in ["Left Ankle", "Right Ankle"]]
-        
+
         def frame_phase(idx):
             phase = phases[idx]
             walking = np.any([idx in frames for frames in walking_frames])
             down = [left_down[idx], right_down[idx]]
-            
+
             return walking, phase, down
-        
-        
+
+
         def overlay_fn(image, idx):
             walking, phase, down = frame_phase(idx)
 
             image = draw_keypoints(image, coco_keypoints[idx], color=(0, 0, 255) if walking else (255, 255, 255))
             image = bbox_fn(image, idx)
-            
+
             if walking:
                 if down[0]:
                     image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[0]:ankle_idx[0]+1], radius=15, color=(0, 255, 0))
@@ -1544,16 +1547,16 @@ class WalkingSegmentsVideo(dj.Computed):
                     image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[1]:ankle_idx[1]+1], radius=15, color=(0, 255, 0))
                 else:
                     image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[1]:ankle_idx[1]+1], radius=15, color=(255, 0, 0))
-            
+
             return image
-        
-        
+
+
         video = (BlurredVideo & key).fetch1('output_video')
-        
+
         _, out_file_name = tempfile.mkstemp(suffix='.mp4')
         video_overlay(video, out_file_name, overlay_fn, downsample=1)
         key['output_video'] = out_file_name
-        
+
         self.insert1(key)
 
         os.remove(out_file_name)
