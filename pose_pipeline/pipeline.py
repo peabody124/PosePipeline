@@ -29,25 +29,25 @@ class Video(dj.Manual):
     def make_entry(filepath, session_id=None):
         from datetime import datetime
         import os
-        
+
         _, fn = os.path.split(filepath)
         date = datetime.strptime(fn[:16], '%Y%m%d-%H%M%SZ')
         d = {'filename': fn, 'video': filepath, 'start_time': date}
         if session_id is not None:
             d.update({'session_id': session_id})
         return d
-    
+
     @staticmethod
     def get_robust_reader(key, return_cap=True):
         import subprocess
         import tempfile
-        
+
         # fetch video and place in temp directory
-        video = (Video & key).fetch1('video')        
+        video = (Video & key).fetch1('video')
         _, outfile = tempfile.mkstemp(suffix='.mp4')
         subprocess.run(['mv', video, outfile])
         video = outfile
-        
+
         cap = cv2.VideoCapture(video)
 
         # check all the frames are readable
@@ -1056,6 +1056,31 @@ class ExposePersonVideo(dj.Computed):
         os.remove(out_file_name)
         os.remove(video)
 
+
+@schema
+class HumorPerson(dj.Computed):
+    definition = '''
+    -> OpenPosePerson
+    ----
+    trans         : longblob
+    root_orient   : longblob
+    pose_body     : longblob
+    betas         : longblob
+    latent_pose   : longblob
+    latent_motion : longblob
+    floor_plane   : longblob
+    contacts      : longblob
+    vertices      : longblob
+    faces         : longblob
+    '''
+
+    def make(self, key):
+
+        from pose_pipeline.wrappers.humor import process_humor
+
+        res = process_humor(key)
+
+        self.insert1(res)
 
 @schema
 class TopDownPersonVideo(dj.Computed):
