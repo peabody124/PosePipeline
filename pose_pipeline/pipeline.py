@@ -713,7 +713,8 @@ class SMPLMethodLookup(dj.Lookup):
                 {'smpl_method': 2, 'smpl_method_name': "ProHMR"},
                 {'smpl_method': 2, 'smpl_method_name': "ProHMR_MMPose"},
                 {'smpl_method': 3, 'smpl_method_name': "Expose"},
-                {'smpl_method': 4, 'smpl_method_name': "PARE"}]
+                {'smpl_method': 4, 'smpl_method_name': "PARE"},
+                {'smpl_method': 5, 'smpl_method_name': "PIXIE"}]
 
 
 @schema
@@ -777,6 +778,12 @@ class SMPLPerson(dj.Computed):
             res = process_pare(key)
             res['model_type'] = 'SMPL'
 
+        elif smpl_method_name == 'PIXIE':
+
+            from .wrappers.pixie import process_pixie
+            res = process_pixie(key)
+            res['model_type'] = 'SMPL-X'
+
         else:
             raise Exception(f"Method {smpl_method_name} not implemented")
 
@@ -819,12 +826,15 @@ class SMPLPersonVideo(dj.Computed):
         elif smpl_method_name == 'Expose':
             from .wrappers.expose import get_expose_callback
             callback = get_expose_callback(key)
+        elif smpl_method_name == 'PIXIE':
+            from .wrappers.pixie import get_pixie_callback
+            callback = get_pixie_callback(key)
         else:
             from pose_pipeline.utils.visualization import get_smpl_callback
             callback = get_smpl_callback(key, poses, betas, cams)
-            
+
         video = (BlurredVideo & key).fetch1('output_video')
-        
+
         fd, out_file_name = tempfile.mkstemp(suffix='.mp4')
         video_overlay(video, out_file_name, callback, downsample=1)
         key['output_video'] = out_file_name
