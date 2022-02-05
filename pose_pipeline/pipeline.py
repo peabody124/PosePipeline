@@ -350,11 +350,11 @@ class TrackingBboxVideo(dj.Computed):
                 cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), c, small)
 
                 label = str(track['track_id'])
-                textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, int(10.0e-3 * image.shape[0]), 4)[0]
+                textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, int(5.0e-3 * image.shape[0]), 4)[0]
                 x = int((bbox[0] + bbox[2]) / 2 - textsize[0] / 2)
                 y = int((bbox[3] + bbox[1]) / 2 + textsize[1] / 2)
-                cv2.putText(image, label, (x, y), 0, 10.0e-3 * image.shape[0], (255, 255, 255), thickness=large)
-                cv2.putText(image, label, (x, y), 0, 10.0e-3 * image.shape[0], c, thickness=small)
+                cv2.putText(image, label, (x, y), 0, 5.0e-3 * image.shape[0], (255, 255, 255), thickness=large)
+                cv2.putText(image, label, (x, y), 0, 5.0e-3 * image.shape[0], c, thickness=small)
 
             return image
 
@@ -428,13 +428,13 @@ class PersonBbox(dj.Computed):
 
         bboxes = (PersonBbox & key).fetch1('bbox')
 
-        def overlay_fn(image, idx):
+        def overlay_fn(image, idx, width=6, color=(255, 255, 255)):
             bbox = bboxes[idx].copy()
             bbox[2:] = bbox[:2] + bbox[2:]
             if np.any(np.isnan(bbox)):
                 return image
 
-            cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), 6)
+            cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, width)
             return image
 
         return overlay_fn
