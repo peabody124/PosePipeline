@@ -85,11 +85,7 @@ def cpu(tensor):
     return tensor.cpu().detach().numpy()
 
 
-def expose_parse_video(video, bboxes, present, config_file, device=torch.device('cuda'), batch_size=16):
-
-    from expose.data.build import collate_batch
-    from expose.data.transforms import build_transforms
-    from expose.data.targets.image_list import to_image_list
+def get_model(config_file, device, return_cfg=False):
     from expose.models.smplx_net import SMPLXNet
     from expose.utils.checkpointer import Checkpointer
 
@@ -123,6 +119,20 @@ def expose_parse_video(video, bboxes, present, config_file, device=torch.device(
     model = model.eval()
 
     os.chdir(pwd)
+
+    if return_cfg:
+        return model, cfg
+
+    return model
+
+
+def expose_parse_video(video, bboxes, present, config_file, device=torch.device('cuda'), batch_size=16):
+
+    from expose.data.build import collate_batch
+    from expose.data.transforms import build_transforms
+    from expose.data.targets.image_list import to_image_list
+
+    model, cfg = get_model(config_file, device, return_cfg=True)
 
     # prepare data parser
     dataset_cfg = cfg.get('datasets', {})
@@ -248,10 +258,7 @@ def process_expose(key, return_results=False):
         'bbox_size': results['bbox_size'],
         'bbox_center': results['bbox_center'],
         'camera_scale': results['camera_scale'],
-        'camera_transl': results['camera_transl'],
-
-        # storing this here is a hack, documented more below
-        'verts': key['verts']
+        'camera_transl': results['camera_transl']
     }
 
     if return_results:
@@ -260,30 +267,54 @@ def process_expose(key, return_results=False):
     return key
 
 
-def get_expose_callback(key, compute_verts=False):
+def get_expose_callback(key):
 
     import smplx
     from pose_pipeline.pipeline import SMPLPerson, PersonBbox
 
     focal_length=5000.0
 
-    model_path = os.path.join(MODEL_DATA_DIR, 'expose/data/models/smplx/SMPLX_NEUTRAL.npz')
-    smplx_model = smplx.body_models.SMPLX(model_path)
-    faces = smplx_model.faces
-
     present, cams = (SMPLPerson * PersonBbox & key).fetch1('present', 'cams')
-
-    if compute_verts:
-        pose = (SMPLPerson & key).fetch1('pose')
-        params = {k: torch.tensor(pose[k]).double() for k in pose.keys() if k not in ['vertices', 'joints', 'proj_joints']}
-        verts = smplx_model(**params)['vertices']
-    else:
-        # this is a complete hack as I cannot for the life of me get
-        # the vertices to perfectly recompute. there seems to be a
-        # translation that is not accounted for
-        verts = cams['verts']
-
     frames = np.where(present)[0].tolist()
+
+    # COUNTERINTUITIVE: it appears like the checkpoint for the
+    # Expose model changes the behavior of SMPL-X, so we need to
+    # load this one up to recompute vertices
+    config_file = os.path.join(os.environ['EXPOSE_PATH'], 'data/conf.yaml')
+    with add_path(os.environ['EXPOSE_PATH']):
+        model = get_model(config_file, 'cpu')
+
+    faces = model.smplx.body_model.faces
+
+    # get SMPL parameters
+    betas, pose = (SMPLPerson & key).fetch1('betas', 'poses')
+    pose = pose.copy()
+    pose['betas'] = betas.copy()
+
+    # and reformat them back to rotation matrices
+    params = dict()
+    for k in pose.keys():
+        from scipy.spatial.transform import Rotation as R
+
+        if k in ['vertices', 'joints', 'proj_joints']:
+            continue
+
+        def to_mat(x):
+            batch, joints, _ = x.shape
+            x = x.reshape([batch * joints, 3])
+            x = R.from_rotvec(x).as_matrix()
+            x = x.reshape([batch, joints, 3, 3])
+            return x
+
+        if k in ['body_pose', 'global_orient', 'left_hand_pose',
+                 'right_hand_pose', 'jaw_pose']:
+            params[k] = torch.tensor(to_mat(pose[k].copy())).float()
+        else:
+            params[k] = torch.tensor(pose[k].copy()).float()
+
+    pred = model.smplx.body_model(get_skin=True, return_shaped=True, **params)
+    verts = pred['vertices']
+
 
     with add_path(os.environ['EXPOSE_PATH']):
         from expose.utils.plot_utils import HDRenderer
