@@ -5,7 +5,6 @@ from .pipeline import TrackingBboxMethodLookup, TrackingBboxMethod, TrackingBbox
 from .pipeline import PersonBboxValid, PersonBbox, BlurredVideo, DetectedFrames, BestDetectedFrames
 from .pipeline import OpenPose, OpenPosePerson, OpenPosePersonVideo
 from .pipeline import CenterHMR, CenterHMRPerson, CenterHMRPersonVideo
-from .pipeline import ExposePerson, ExposePersonVideo
 #from .pipeline import MMPoseTopDownPerson, MMPoseTopDownPersonVideo
 from .pipeline import GastNetPerson, GastNetPersonVideo
 #from .pipeline import PoseWarperPerson, PoseWarperPersonVideo
