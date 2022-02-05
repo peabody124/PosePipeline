@@ -225,7 +225,7 @@ def process_expose(key, return_results=False):
     final_params = results['final_params']
     for k in final_params[0].keys():
 
-        if k in ['betas', 'vertices', 'joints', 'proj_joints]:
+        if k in ['betas', 'vertices', 'joints', 'proj_joints']:
             # these are stored in other table columns. only keep the
             # specific pose parameters
             continue
