@@ -334,24 +334,27 @@ class TrackingBboxVideo(dj.Computed):
 
         N = len(np.unique([t['track_id'] for track in tracks for t in track]))
         colors = matplotlib.cm.get_cmap('hsv', lut=N)
-        
-        def overlay_callback(image, idx):    
+
+        def overlay_callback(image, idx):
             image = image.copy()
-            
+
             for track in tracks[idx]:
                 c = colors(track['track_id'])
                 c = (int(c[0] * 255.0), int(c[1] * 255.0), int(c[2] * 255.0))
 
+                small = int(5e-3 * np.max(image.shape))
+                large = 2 * small
+
                 bbox = track['tlbr']
-                cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), 6)
-                cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), c, 3)
-                
+                cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), large)
+                cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), c, small)
+
                 label = str(track['track_id'])
-                textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
+                textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, int(10.0e-3 * image.shape[0]), 4)[0]
                 x = int((bbox[0] + bbox[2]) / 2 - textsize[0] / 2)
                 y = int((bbox[3] + bbox[1]) / 2 + textsize[1] / 2)
-                cv2.putText(image, label, (x, y), 0, 2.0e-3 * image.shape[0], (255, 255, 255), thickness=4)
-                cv2.putText(image, label, (x, y), 0, 2.0e-3 * image.shape[0], c, thickness=2)
+                cv2.putText(image, label, (x, y), 0, 10.0e-3 * image.shape[0], (255, 255, 255), thickness=large)
+                cv2.putText(image, label, (x, y), 0, 10.0e-3 * image.shape[0], c, thickness=small)
 
             return image
 
