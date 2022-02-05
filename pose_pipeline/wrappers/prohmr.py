@@ -5,7 +5,7 @@ from pose_pipeline import MODEL_DATA_DIR
 from pose_pipeline.utils.bounding_box import get_person_dataloader
 from pose_pipeline.utils.bounding_box import convert_crop_coords_to_orig_img, convert_crop_cam_to_orig_img
 from pose_pipeline.env import add_path
-from pose_pipeline import VideoInfo, OpenPosePerson, TopDownPerson
+from pose_pipeline import VideoInfo, OpenPosePerson, TopDownPerson, TopDownMethodLookup
 import torch
 
 
@@ -90,7 +90,7 @@ def process_prohmr(key, optimization=True, batch_size=1):
         frame_ids, dataloader, bbox = get_person_dataloader(key, crop_size=crop_size, batch_size=batch_size)
 
         frames = []
-        pred_cam = [] 
+        pred_cam = []
         pred_verts = []
         pred_pose = []
         pred_betas = []
@@ -113,8 +113,8 @@ def process_prohmr(key, optimization=True, batch_size=1):
                 center = np.array([width, height]) / 2.0
 
                 batch_opt={'img': batch.to(device), 'orig_keypoints_2d': torch.from_numpy(kp).to(device),
-                           'box_center': torch.from_numpy(center[None, ...]).to(device), 
-                           'box_size': torch.from_numpy(scale[None, 0]).to(device), 
+                           'box_center': torch.from_numpy(center[None, ...]).to(device),
+                           'box_size': torch.from_numpy(scale[None, 0]).to(device),
                            'img_size': torch.from_numpy(np.array([[width, height]])).to(device)}
 
                 opt_out = model.downstream_optimization(regression_output=out,
@@ -145,7 +145,7 @@ def process_prohmr(key, optimization=True, batch_size=1):
 
             else:
                 print('Not implemented')
-          
+
     key['cams'] = np.concatenate(pred_cam, axis=0)
     key['verts'] = np.concatenate(pred_verts, axis=0)
     key['poses'] = np.concatenate(pred_pose, axis=0)
@@ -179,7 +179,7 @@ def process_prohmr_mmpose(key, batch_size=1):
         from prohmr.optimization import KeypointFitting
         from prohmr.utils import recursive_to
         from prohmr.utils.geometry import perspective_projection
-        
+
         model_cfg = prohmr_config()
         model_cfg['SMPL']['MODEL_PATH'] = model_path
         model_cfg['SMPL']['JOINT_REGRESSOR_EXTRA'] = None
@@ -198,7 +198,7 @@ def process_prohmr_mmpose(key, batch_size=1):
         frame_ids, dataloader, bbox = get_person_dataloader(key, crop_size=crop_size, batch_size=batch_size)
 
         frames = []
-        pred_cam = [] 
+        pred_cam = []
         pred_verts = []
         pred_pose = []
         pred_betas = []
@@ -219,8 +219,8 @@ def process_prohmr_mmpose(key, batch_size=1):
             center = np.array([width, height]) / 2.0
 
             batch_opt={'img': batch.to(device), 'orig_keypoints_2d': torch.from_numpy(kp).to(device),
-                       'box_center': torch.from_numpy(center[None, ...]).to(device), 
-                       'box_size': torch.from_numpy(scale[None, 0]).to(device), 
+                       'box_center': torch.from_numpy(center[None, ...]).to(device),
+                       'box_size': torch.from_numpy(scale[None, 0]).to(device),
                        'img_size': torch.from_numpy(np.array([[width, height]])).to(device)}
 
             opt_out = model.downstream_optimization(regression_output=out,
@@ -248,7 +248,7 @@ def process_prohmr_mmpose(key, batch_size=1):
             pred_joints3d.append(opt_out['model_joints'].cpu().detach().numpy())
 
             smpl_joints2d.append(projected_joints)
-                           
+
     key['cams'] = np.concatenate(pred_cam, axis=0)
     key['verts'] = np.concatenate(pred_verts, axis=0)
     key['poses'] = np.concatenate(pred_pose, axis=0)

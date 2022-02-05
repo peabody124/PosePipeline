@@ -714,10 +714,10 @@ class SMPLMethodLookup(dj.Lookup):
     contents = [{'smpl_method': 0, 'smpl_method_name': 'VIBE'},
                 {'smpl_method': 1, 'smpl_method_name': 'MEVA'},
                 {'smpl_method': 2, 'smpl_method_name': "ProHMR"},
-                {'smpl_method': 2, 'smpl_method_name': "ProHMR_MMPose"},
                 {'smpl_method': 3, 'smpl_method_name': "Expose"},
                 {'smpl_method': 4, 'smpl_method_name': "PARE"},
-                {'smpl_method': 5, 'smpl_method_name': "PIXIE"}]
+                {'smpl_method': 5, 'smpl_method_name': "PIXIE"},
+                {'smpl_method': 6, 'smpl_method_name': "ProHMR_MMPose"}]
 
 
 @schema
