@@ -148,6 +148,7 @@ def get_pixie_callback(key):
 
     results = (SMPLPerson & key).fetch1('poses')
     dataset = PixiePosePipeDataset(key, blurred=True)
+    frame_ids = dataset.frame_ids
 
     with add_path(os.environ['PIXIE_PATH']):
 
@@ -164,6 +165,13 @@ def get_pixie_callback(key):
         visualizer = Visualizer(render_size=224, config = pixie_cfg, device=device, rasterizer_type='standard')
 
         def overlay(image, idx):
+
+            idx = np.where(frame_ids == idx)[0]
+            if len(idx) == 1:
+                idx = idx[0]
+            else:
+                return image
+
             poses = {k: torch.tensor(v[None, idx]).to(device) for k, v in results.items()}
             sample = dataset[idx]
             sample['image'] = sample['image'].unsqueeze(0).to(device)
