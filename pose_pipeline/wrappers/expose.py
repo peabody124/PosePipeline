@@ -25,12 +25,12 @@ class VideoWithBoxes(dutils.Dataset):
 
         # to return with metadata
         self.video_name = os.path.splitext(os.path.split(video)[1])[0]
-        
+
         self.cap = cv2.VideoCapture(video)
-        
+
         # frames with valid bounding box
         self.valid_idx = np.where(present)[0]
-            
+
         self.total_frames = len(self.valid_idx)
 
         self.transforms = transforms
@@ -42,10 +42,10 @@ class VideoWithBoxes(dutils.Dataset):
         return len(self.valid_idx)
 
     def __getitem__(self, index):
-        
+
         from expose.data.targets import BoundingBox
         from expose.data.utils.bbox import bbox_to_center_scale
-    
+
         bbox = self.bboxes[index]
 
         frame_idx = self.valid_idx[index]
@@ -53,7 +53,7 @@ class VideoWithBoxes(dutils.Dataset):
 
         for _ in range(reads):
             ret, frame = self.cap.read()
-            
+
             img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             if img.dtype == np.uint8:
                 img = img.astype(np.float32) / 255.0
@@ -72,7 +72,7 @@ class VideoWithBoxes(dutils.Dataset):
         target.add_field('scale', scale)
         target.add_field('original_bbox', bbox)
         target.add_field('frame_idx', self.valid_idx[index])
-        
+
         target.add_field('fname', f'{self.video_name}_{index:03d}')
 
         if self.transforms is not None:
@@ -147,7 +147,7 @@ def expose_parse_video(video, bboxes, present, config_file, device=torch.device(
         pin_memory=True,
     )
 
-    results = {'bbox_size': [], 'bbox_center': [], 'camera_scale': [], 'camera_transl': [], 
+    results = {'bbox_size': [], 'bbox_center': [], 'camera_scale': [], 'camera_transl': [],
                'initial_params': [], 'final_params': [], 'frames': [], 'faces': []}
 
     for batch in tqdm(expose_dloader, dynamic_ncols=True):
@@ -178,7 +178,7 @@ def expose_parse_video(video, bboxes, present, config_file, device=torch.device(
         initial_params = [dict(zip(initial_params,t)) for t in zip(*initial_params.values())]
 
         params = model_output['body']['final']
-        final_params = {k: v.cpu().detach().numpy() for k, v in params.items() if k not in ['full_pose'] and v is not None}
+        final_params = {k: v.cpu().detach().numpy() for k, v in params.items() if v is not None}  # k not in ['full_pose'] and
         final_params = [dict(zip(final_params,t)) for t in zip(*final_params.values())]
 
         # add to accumulator
@@ -193,57 +193,6 @@ def expose_parse_video(video, bboxes, present, config_file, device=torch.device(
 
     return results
 
-
-class ExposeVideoWriter:
-
-    def __init__(self, results, body_crop_size=256, focal_length=5000.0):
-        from expose.utils.plot_utils import HDRenderer
-    
-        self.renderer = HDRenderer(img_size=body_crop_size)
-        self.focal_length = focal_length
-        self.results = results
-        self.faces = results['faces']
-
-        self.camera_scale = results['camera_scale']
-        self.camera_transl = results['camera_transl']
-        self.bbox_size = results['bbox_size']
-        self.bbox_center = results['bbox_center']
-        self.frames = results['frames']
-
-    def get_overlay_fn(self):
-
-        def overlay_frame(image, frame_idx):
-
-            idx = [idx for idx, val in enumerate(self.frames) if val == frame_idx]
-            if len(idx) != 1:
-                return image
-            idx = idx[0]
-
-            image = image / 255.0
-
-            vertices = self.results['final_params'][idx]['vertices']
-            #vertices = self.results['initial_params'][idx]['vertices']  # these don't capture hands
-
-            z = 2 * self.focal_length / (self.camera_scale[idx] * self.bbox_size[idx])
-
-            transl = [*self.camera_transl[idx], z]
-
-            image = self.renderer(vertices[None, ...],
-                    self.faces,
-                    focal_length=[self.focal_length],
-                    camera_translation=[transl],
-                    camera_center=[self.bbox_center[idx]],
-                    bg_imgs=[np.transpose(image, [2, 0, 1])],
-                    return_with_alpha=False,
-                    body_color=[0.4, 0.4, 0.7]
-            )
-
-            image = np.transpose(image[0], [1, 2, 0])
-            image = (image * 255).astype(np.uint8)
-
-            return image
-
-        return overlay_frame
 
 def process_expose(key, return_results=False):
 
@@ -267,20 +216,41 @@ def process_expose(key, return_results=False):
     key['joints3d'] = np.asarray([r['joints'] for r in results['final_params']])
     key['joints2d'] = np.asarray([r['proj_joints'] for r in results['final_params']])
     key['verts'] = np.asarray([r['vertices'] for r in results['final_params']])
-    key['poses'] = np.asarray([R.from_matrix(np.concatenate([r['global_orient'], r['body_pose'], r['left_hand_pose'], r['body_pose']], axis=0)).as_rotvec()
-                            for r in results['final_params']])
     key['betas'] = np.asarray([r['betas'] for r in results['final_params']])
-    
+
+    # SMPL-X models use a more complex pose representation that is factored
+    # into body type. Try to consistently use the rotation vector format in
+    # this.
+    key['poses'] = {}
+    final_params = results['final_params']
+    for k in final_params[0].keys():
+
+        if k in ['betas', 'vertices', 'joints', 'proj_joints]:
+            # these are stored in other table columns. only keep the
+            # specific pose parameters
+            continue
+
+        from scipy.spatial.transform import Rotation as R
+
+        # convert matrices to rotation vector format
+        if len(final_params[0][k].shape) == 3 and k != 'proj_joints':
+            key['poses'][k] = np.array([R.from_matrix(f[k]).as_rotvec() for f in final_params])
+        else:
+            key['poses'][k] = np.array([f[k] for f in final_params])
+
+    # still currently have the ugly format where only present frames are
+    # stored so we need to account for this
     bboxes_dj, present_dj = (Video * PersonBbox & key).fetch1('bbox', 'present')
     bbox = bboxes_dj[present_dj]
     key['joints2d'] = convert_crop_coords_to_orig_img(bbox, key['joints2d'], crop_size)
 
     key['cams'] = {
-        'transl': np.asarray([r['transl'] for r in results['final_params']]),
         'bbox_size': results['bbox_size'],
         'bbox_center': results['bbox_center'],
         'camera_scale': results['camera_scale'],
         'camera_transl': results['camera_transl'],
+
+        # storing this here is a hack, documented more below
         'verts': key['verts']
     }
 
@@ -290,33 +260,41 @@ def process_expose(key, return_results=False):
     return key
 
 
-def get_expose_callback(key):
+def get_expose_callback(key, compute_verts=False):
 
+    import smplx
     from pose_pipeline.pipeline import SMPLPerson, PersonBbox
 
-    body_crop_size=256
     focal_length=5000.0
-    
-    import smplx
+
     model_path = os.path.join(MODEL_DATA_DIR, 'expose/data/models/smplx/SMPLX_NEUTRAL.npz')
     smplx_model = smplx.body_models.SMPLX(model_path)
     faces = smplx_model.faces
 
     present, cams = (SMPLPerson * PersonBbox & key).fetch1('present', 'cams')
 
+    if compute_verts:
+        pose = (SMPLPerson & key).fetch1('pose')
+        params = {k: torch.tensor(pose[k]).double() for k in pose.keys() if k not in ['vertices', 'joints', 'proj_joints']}
+        verts = smplx_model(**params)['vertices']
+    else:
+        # this is a complete hack as I cannot for the life of me get
+        # the vertices to perfectly recompute. there seems to be a
+        # translation that is not accounted for
+        verts = cams['verts']
+
     frames = np.where(present)[0].tolist()
 
     with add_path(os.environ['EXPOSE_PATH']):
         from expose.utils.plot_utils import HDRenderer
-        renderer = HDRenderer(img_size=body_crop_size)
-        
+        renderer = HDRenderer()
+
         def overlay_frame(image, frame_idx):
 
             if frame_idx not in frames:
                 return image
 
             idx = frames.index(frame_idx)
-            print(idx)
 
             image = image / 255.0
 
@@ -324,9 +302,9 @@ def get_expose_callback(key):
 
             transl = [*cams['camera_transl'][idx], z]
 
-            image = renderer(cams['verts'][idx][None, ...],
+            image = renderer(verts[None, idx, ...],
                              faces, focal_length=[focal_length],
-                             camera_translation=[cams['transl'][idx]],
+                             camera_translation=[transl],
                              camera_center=[cams['bbox_center'][idx]],
                              bg_imgs=[np.transpose(image, [2, 0, 1])],
                              return_with_alpha=False,

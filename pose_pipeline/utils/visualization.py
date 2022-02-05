@@ -39,7 +39,7 @@ class FaceBlur:
                 box = faces[i, 3:7] * np.array([w, h, w, h])
                 # convert to integers
                 start_x, start_y, end_x, end_y = box.astype(int)
-                
+
                 #print(start_x, start_y, end_x, end_y)
                 # get the face image
                 face = image[start_y: end_y, start_x: end_x]
@@ -56,8 +56,8 @@ class FaceBlur:
 
 def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur_faces=False,
                   compress=True, bitrate='5M'):
-    """ Process a video and create overlay image 
-    
+    """ Process a video and create overlay image
+
         Args:
             video (str): filename for source
             output_name (str): output filename
@@ -74,7 +74,7 @@ def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur
 
     # configure output
     output_size = (int(w / downsample), int(h / downsample))
-    
+
     fourcc = cv2.VideoWriter_fourcc(*codec)
     out = cv2.VideoWriter(output_name, fourcc, fps, output_size)
 
@@ -124,21 +124,21 @@ def get_smpl_callback(key, poses, betas, cams):
     from pose_estimation.body_models.smpl import SMPL
     from pose_estimation.util.pyrender_renderer import PyrendererRenderer
     height, width = (VideoInfo & key).fetch1('height', 'width')
-    
+
     valid_idx = np.where((PersonBbox & key).fetch1('present'))[0]
-    
+
     smpl = SMPL()
-    renderer = PyrendererRenderer(smpl.get_faces(), img_size=(height, width))    
+    renderer = PyrendererRenderer(smpl.get_faces(), img_size=(height, width))
     verts = smpl(poses, betas)[0].numpy()
 
     joints2d = (SMPLPerson & key).fetch1('joints2d')
 
     def overlay(frame, idx, renderer=renderer, verts=verts, cams=cams, joints2d=joints2d):
-        
+
         smpl_idx = np.where(valid_idx == idx)[0]
         if len(smpl_idx) == 1:
             frame = renderer(verts[smpl_idx[0]], cams[smpl_idx[0]], frame)
             frame = draw_keypoints(frame, joints2d[smpl_idx[0]], radius=4)
         return frame
-        
+
     return overlay
