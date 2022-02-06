@@ -778,6 +778,60 @@ class LiftingPerson(dj.Computed):
                 'Nose', 'Head', 'Left shoulder', 'Left elbow', 'Left wrist', 'Right shoulder', 'Right elbow', 'Right wrist']
 
 
+@schema
+class LiftingPersonVideo(dj.Computed):
+    definition = """
+    -> LiftingPerson
+    -> BlurredVideo
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    """
+
+    def make(self, key):
+
+        keypoints = (TopDownPerson & key).fetch1('keypoints')
+        keypoints_3d = (LiftingPerson & key).fetch1('keypoints_3d').copy()
+        blurred_video = (BlurredVideo & key).fetch1('output_video')
+        width, height, fps = (VideoInfo & key).fetch1('width', 'height', 'fps')
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+
+        with add_path(os.environ["GAST_PATH"]):
+
+            from common.graph_utils import adj_mx_from_skeleton
+            from common.skeleton import Skeleton
+            from tools.inference import gen_pose
+            from tools.preprocess import h36m_coco_format, revise_kpts
+
+            from tools.vis_h36m import render_animation
+
+            skeleton = Skeleton(parents=[-1, 0, 1, 2, 0, 4, 5, 0, 7, 8, 9, 8, 11, 12, 8, 14, 15],
+                                joints_left=[6, 7, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22, 23],
+                                joints_right=[1, 2, 3, 4, 5, 24, 25, 26, 27, 28, 29, 30, 31])
+            adj = adj_mx_from_skeleton(skeleton)
+
+            joints_left, joints_right = [4, 5, 6, 11, 12, 13], [1, 2, 3, 14, 15, 16]
+            kps_left, kps_right = [4, 5, 6, 11, 12, 13], [1, 2, 3, 14, 15, 16]
+            rot = np.array([0.14070565, -0.15007018, -0.7552408, 0.62232804], dtype=np.float32)
+            keypoints_metadata = {'keypoints_symmetry': (joints_left, joints_right), 'layout_name': 'Human3.6M', 'num_joints': 17}
+
+            keypoints_reformat, keypoints_score = keypoints[None, ..., :2], keypoints[None, ..., 2]
+            keypoints, scores, valid_frames = h36m_coco_format(keypoints_reformat, keypoints_score)
+            re_kpts = revise_kpts(keypoints, scores, valid_frames)
+            re_kpts = re_kpts.transpose(1, 0, 2, 3)
+
+            keypoints_3d[:, :, 2] -= np.amin(keypoints_3d[:, :, 2])
+            anim_output = {'Reconstruction 1': keypoints_3d}
+
+            render_animation(re_kpts, keypoints_metadata, anim_output, skeleton, fps, 30000, np.array(70., dtype=np.float32),
+                            out_file_name, input_video_path=blurred_video, viewport=(width, height), com_reconstrcution=False)
+
+        key['output_video'] = out_file_name
+        self.insert1(key)
+
+        os.remove(blurred_video)
+        os.remove(out_file_name)
+
+
 ## Classes that handle SMPL meshed based tracking
 @schema
 class SMPLMethodLookup(dj.Lookup):
@@ -1131,413 +1185,8 @@ class TopDownPersonVideo(dj.Computed):
         os.remove(out_file_name)
         os.remove(video)
 
-@schema
-class GastNetPerson(dj.Computed):
-    definition = """
-    -> TopDownPerson
-    ---
-    keypoints_3d       : longblob
-    keypoints_valid    : longblob
-    """
-
-    def make(self, key):
-
-        keypoints = (TopDownPerson & key).fetch1('keypoints')
-        height, width = (VideoInfo & key).fetch1('height', 'width')
-
-        gastnet_files = os.path.join(os.path.split(__file__)[0], '../3rdparty/gastnet/')
-
-        with add_path(os.environ["GAST_PATH"]):
-
-            import torch
-            from model.gast_net import SpatioTemporalModel, SpatioTemporalModelOptimized1f
-            from common.graph_utils import adj_mx_from_skeleton
-            from common.skeleton import Skeleton
-            from tools.inference import gen_pose
-            from tools.preprocess import h36m_coco_format, revise_kpts
-
-            def gast_load_model(rf=27):
-                if rf == 27:
-                    chk = gastnet_files + '27_frame_model.bin'
-                    filters_width = [3, 3, 3]
-                    channels = 128
-                elif rf == 81:
-                    chk = gastnet_files + '81_frame_model.bin'
-                    filters_width = [3, 3, 3, 3]
-                    channels = 64
-                else:
-                    raise ValueError('Only support 27 and 81 receptive field models for inference!')
-
-                skeleton = Skeleton(parents=[-1, 0, 1, 2, 0, 4, 5, 0, 7, 8, 9, 8, 11, 12, 8, 14, 15],
-                                    joints_left=[6, 7, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22, 23],
-                                    joints_right=[1, 2, 3, 4, 5, 24, 25, 26, 27, 28, 29, 30, 31])
-                adj = adj_mx_from_skeleton(skeleton)
-
-                model_pos = SpatioTemporalModel(adj, 17, 2, 17, filter_widths=filters_width, channels=channels, dropout=0.05)
-
-                checkpoint = torch.load(chk)
-                model_pos.load_state_dict(checkpoint['model_pos'])
-
-                if torch.cuda.is_available():
-                    model_pos = model_pos.cuda()
-                model_pos.eval()
-
-                return model_pos
-
-            keypoints_reformat, keypoints_score = keypoints[None, ..., :2], keypoints[None, ..., 2]
-            keypoints, scores, valid_frames = h36m_coco_format(keypoints_reformat, keypoints_score)
-
-            re_kpts = revise_kpts(keypoints, scores, valid_frames)
-            assert len(re_kpts) == 1
-
-            rf = 27
-            model_pos = gast_load_model(rf)
-
-            pad = (rf - 1) // 2  # Padding on each side
-            causal_shift = 0
-
-            # Generating 3D poses
-            prediction = gen_pose(re_kpts, valid_frames, width, height, model_pos, pad, causal_shift)
-
-        key['keypoints_3d'] = np.zeros((keypoints.shape[1], 17, 3))
-        key['keypoints_3d'][np.array(valid_frames[0])] = prediction[0]
-        key['keypoints_valid'] = [i in valid_frames[0] for i in np.arange(keypoints.shape[1])]
-
-        self.insert1(key)
-
-    def fetch_kinematics(self):
-        import numpy as np
-
-        keypoints3d = self.fetch1('keypoints_3d')
-        keypoints = (TopDownPerson & self).fetch1('keypoints')
-        timestamps = (VideoInfo & self).fetch1('timestamps')
-
-        leg_idx = np.array([TopDownPerson.joint_names().index(k) for k in ['Left Ankle', 'Left Knee', 'Left Hip', 'Right Hip', 'Right Knee', 'Right Ankle']])
-        keypoints_valid = np.all(keypoints[:, leg_idx, -1] > 0.5, axis=1)
-#        keypoints_valid = np.arange(np.where(keypoints_valid)[0][0], np.where(keypoints_valid)[0][-1]+1)
-        keypoints3d = keypoints3d[keypoints_valid]
-
-        timestamps = np.array([(t-timestamps[0]).total_seconds() for t in timestamps])[np.where(keypoints_valid)[0]]
-
-        idx = [GastNetPerson.joint_names().index(j) for j in ['Right hip', 'Left hip']]
-
-        delta_pelvis = keypoints3d[:, idx[1]] - keypoints3d[:, idx[0]]
-        pelvis_angle = -np.arctan2(delta_pelvis[:, 0], delta_pelvis[:, 1])
-        pelvis_angle = np.unwrap(pelvis_angle)
-
-        pelvis_angle = np.median(pelvis_angle, axis=0, keepdims=True)
-
-        z = np.zeros(pelvis_angle.shape)
-        pelvis_rot = np.array([[np.cos(pelvis_angle), -np.sin(pelvis_angle), z], [np.sin(pelvis_angle), np.cos(pelvis_angle), z], [z, z, 1+z]])
-        pelvis_rot = np.transpose(pelvis_rot, [2, 0, 1])
-
-        # derotate the points
-        keypoints3d = keypoints3d @ pelvis_rot
-
-        # start collation outputs
-        joint_names = self.joint_names()
-        outputs = {'timestamps': timestamps, 'Right Foot': keypoints3d[:, joint_names.index('Right foot'), 0], 'Left Foot': keypoints3d[:, joint_names.index('Left foot'), 0]}
-
-        # pick the joints to extract from GastNet in the sagital plane
-        angles = [('Right Hip', ('Right hip', 'Right knee'), ('Spine', 'Hip (root)')),
-                  ('Left Hip', ('Left hip', 'Left knee'), ('Spine', 'Hip (root)')),
-                  ('Right Knee', ('Right knee', 'Right foot'), ('Right hip', 'Right knee')),
-                  ('Left Knee', ('Left knee', 'Left foot'), ('Left hip', 'Left knee'))]
-        plane = np.array([0, 2])
-
-        for joint in angles:
-            joint, v1, v2 = joint
-
-            # compute the difference between two joint locations in the sagital plane
-            v1 = keypoints3d[:, joint_names.index(v1[1]), plane] - keypoints3d[:, joint_names.index(v1[0]), plane]
-            v2 = keypoints3d[:, joint_names.index(v2[1]), plane] - keypoints3d[:, joint_names.index(v2[0]), plane]
-
-            v1 = v1 / np.linalg.norm(v1, axis=-1, keepdims=True)
-            v2 = v2 / np.linalg.norm(v2, axis=-1, keepdims=True)
-            angle = np.arccos(np.sum(v1 * v2, axis=-1)) * 180 / np.pi
-
-            outputs[joint] = angle
-
-        return outputs
-
-    @staticmethod
-    def joint_names():
-        """ GAST-Net 3D follows the output format of Video3D and uses Human3.6 ordering """
-        return ['Hip (root)', 'Right hip', 'Right knee', 'Right foot', 'Left hip', 'Left knee', 'Left foot', 'Spine', 'Thorax', 'Nose', 'Head', 'Left shoulder', 'Left elbow', 'Left wrist', 'Right shoulder', 'Right elbow', 'Right wrist']
-
-@schema
-class GastNetPersonVideo(dj.Computed):
-    definition = """
-    -> GastNetPerson
-    -> BlurredVideo
-    ---
-    output_video      : attach@localattach    # datajoint managed video file
-    """
-
-    def make(self, key):
-
-        keypoints = (TopDownPerson & key).fetch1('keypoints')
-        keypoints_3d = (GastNetPerson & key).fetch1('keypoints_3d').copy()
-        blurred_video = (BlurredVideo & key).fetch1('output_video')
-        width, height, fps = (VideoInfo & key).fetch1('width', 'height', 'fps')
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
-
-        with add_path(os.environ["GAST_PATH"]):
-
-            from common.graph_utils import adj_mx_from_skeleton
-            from common.skeleton import Skeleton
-            from tools.inference import gen_pose
-            from tools.preprocess import h36m_coco_format, revise_kpts
-
-            from tools.vis_h36m import render_animation
-
-            skeleton = Skeleton(parents=[-1, 0, 1, 2, 0, 4, 5, 0, 7, 8, 9, 8, 11, 12, 8, 14, 15],
-                                joints_left=[6, 7, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22, 23],
-                                joints_right=[1, 2, 3, 4, 5, 24, 25, 26, 27, 28, 29, 30, 31])
-            adj = adj_mx_from_skeleton(skeleton)
-
-            joints_left, joints_right = [4, 5, 6, 11, 12, 13], [1, 2, 3, 14, 15, 16]
-            kps_left, kps_right = [4, 5, 6, 11, 12, 13], [1, 2, 3, 14, 15, 16]
-            rot = np.array([0.14070565, -0.15007018, -0.7552408, 0.62232804], dtype=np.float32)
-            keypoints_metadata = {'keypoints_symmetry': (joints_left, joints_right), 'layout_name': 'Human3.6M', 'num_joints': 17}
-
-            keypoints_reformat, keypoints_score = keypoints[None, ..., :2], keypoints[None, ..., 2]
-            keypoints, scores, valid_frames = h36m_coco_format(keypoints_reformat, keypoints_score)
-            re_kpts = revise_kpts(keypoints, scores, valid_frames)
-            re_kpts = re_kpts.transpose(1, 0, 2, 3)
-
-            keypoints_3d[:, :, 2] -= np.amin(keypoints_3d[:, :, 2])
-            anim_output = {'Reconstruction 1': keypoints_3d}
-
-            render_animation(re_kpts, keypoints_metadata, anim_output, skeleton, fps, 30000, np.array(70., dtype=np.float32),
-                            out_file_name, input_video_path=blurred_video, viewport=(width, height), com_reconstrcution=False)
-
-        key['output_video'] = out_file_name
-        self.insert1(key)
-
-        os.remove(blurred_video)
-        os.remove(out_file_name)
-
-@schema
-class PoseFormerPerson(dj.Computed):
-    definition = """
-    -> TopDownPerson
-    ---
-    keypoints_3d       : longblob
-    """
-
-    def make(self, key):
-
-        keypoints = (TopDownPerson & key).fetch1('keypoints')
-        height, width = (VideoInfo & key).fetch1('height', 'width')
-
-        poseformer_files = os.path.join(os.path.split(__file__)[0], '../3rdparty/poseformer/')
-
-        receptive_field=81
-        num_joints=17
-
-        def coco_h36m(keypoints):
-            # adopted from https://github.com/fabro66/GAST-Net-3DPoseEstimation/blob/97a364affe5cd4f68fab030e0210187333fff25e/tools/mpii_coco_h36m.py#L20
-            # MIT License
-
-            spple_keypoints = [10, 8, 0, 7]
-            h36m_coco_order = [9, 11, 14, 12, 15, 13, 16, 4, 1, 5, 2, 6, 3]
-            coco_order = [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-
-            temporal = keypoints.shape[0]
-            keypoints_h36m = np.zeros_like(keypoints, dtype=np.float32)
-            htps_keypoints = np.zeros((temporal, 4, 2), dtype=np.float32)
-
-            # htps_keypoints: head, thorax, pelvis, spine
-            htps_keypoints[:, 0, 0] = np.mean(keypoints[:, 1:5, 0], axis=1, dtype=np.float32)
-            htps_keypoints[:, 0, 1] = np.sum(keypoints[:, 1:3, 1], axis=1, dtype=np.float32) - keypoints[:, 0, 1]
-            htps_keypoints[:, 1, :] = np.mean(keypoints[:, 5:7, :], axis=1, dtype=np.float32)
-            htps_keypoints[:, 1, :] += (keypoints[:, 0, :] - htps_keypoints[:, 1, :]) / 3
-
-            htps_keypoints[:, 2, :] = np.mean(keypoints[:, 11:13, :], axis=1, dtype=np.float32)
-            htps_keypoints[:, 3, :] = np.mean(keypoints[:, [5, 6, 11, 12], :], axis=1, dtype=np.float32)
-
-            keypoints_h36m[:, spple_keypoints, :] = htps_keypoints
-            keypoints_h36m[:, h36m_coco_order, :] = keypoints[:, coco_order, :]
-
-            keypoints_h36m[:, 9, :] -= (keypoints_h36m[:, 9, :] - np.mean(keypoints[:, 5:7, :], axis=1, dtype=np.float32)) / 4
-            keypoints_h36m[:, 7, 0] += 2*(keypoints_h36m[:, 7, 0] - np.mean(keypoints_h36m[:, [0, 8], 0], axis=1, dtype=np.float32))
-            keypoints_h36m[:, 8, 1] -= (np.mean(keypoints[:, 1:3, 1], axis=1, dtype=np.float32) - keypoints[:, 0, 1])*2/3
-
-            return keypoints_h36m
-
-        # reformat keypoints from coco detection to the input of the lifting
-        keypoints = coco_h36m(keypoints[..., :2])
-        keypoints = keypoints / np.array([height, width])[None, None, :]
-
-        # reshape into temporal frames. shifted in time as we want to estimate for all
-        # time and PoseFormer only produces the central timepoint
-        dat = []
-        for i in range(keypoints.shape[0]-receptive_field+1):
-            dat.append(keypoints[i:i+receptive_field, :, :2])
-        dat = np.stack(dat, axis=0)
-
-        with add_path(os.environ["POSEFORMER_PATH"]):
-
-            import torch
-            import torch.nn as nn
-            from common.model_poseformer import PoseTransformer
-
-            poseformer = PoseTransformer(num_frame=receptive_field, num_joints=num_joints, in_chans=2, embed_dim_ratio=32, depth=4,
-                    num_heads=8, mlp_ratio=2., qkv_bias=True, qk_scale=None,drop_path_rate=0.1)
-
-            poseformer = nn.DataParallel(poseformer)
-
-            poseformer.cuda()
-            chk = os.path.join(poseformer_files, 'detected81f.bin')
-
-            checkpoint = torch.load(chk, map_location=lambda storage, loc: storage)
-            poseformer.load_state_dict(checkpoint['model_pos'], strict=False)
-
-            kp3d = []
-            for idx in range(dat.shape[0]):
-                frame = torch.Tensor(dat[None, idx]).cuda()
-                kp3d.append(poseformer.forward(frame).cpu().detach().numpy()[:, 0, ...])
-
-            del poseformer
-            torch.cuda.empty_cache()
-
-            kp3d = np.concatenate([np.zeros((40, 17, 3)), *kp3d, np.zeros((40, 17, 3))], axis=0)
-
-        key['keypoints_3d'] = kp3d
-        self.insert1(key)
-
     @staticmethod
     def joint_names():
         """ PoseFormer follows the output format of Video3D and uses Human3.6 ordering """
         return ['Hip (root)', 'Right hip', 'Right knee', 'Right foot', 'Left hip', 'Left knee', 'Left foot', 'Spine', 'Thorax', 'Nose', 'Head', 'Left shoulder', 'Left elbow', 'Left wrist', 'Right shoulder', 'Right elbow', 'Right wrist']
 
-
-@schema
-class WalkingSegments(dj.Computed):
-    definition = '''
-    -> GastNetPerson
-    ---
-    phases                 : longblob
-    walking_frames         : longblob
-    segment_boundaries     : longblob
-    walking_prob           : longblob
-    num_walking_frames     : int
-    '''
-
-    def make(self, key):
-
-        from gait_analysis.walking_segments import get_gait_phases
-        from scipy.signal import hilbert, medfilt
-
-        keypoints3d, keypoints_valid = (GastNetPerson & key).fetch1('keypoints_3d', 'keypoints_valid')
-        phases = get_gait_phases(keypoints3d)
-
-        # apply heuristic to find walking segments
-        fs = 1.0 / 30.0
-
-        analytic_signal = hilbert(phases, axis=0)
-        amplitude_envelope = np.abs(analytic_signal)
-        walking_prob = np.array(keypoints_valid) * np.mean(amplitude_envelope, axis=-1)
-
-        def hyst(x, th_lo, th_hi, initial = False):
-            hi = x >= th_hi
-            lo_or_hi = (x <= th_lo) | hi
-            ind = np.nonzero(lo_or_hi)[0]
-            if not ind.size: # prevent index error if ind is empty
-                return np.zeros_like(x, dtype=bool) | initial
-            cnt = np.cumsum(lo_or_hi) # from 0 to len(x)
-            return np.where(cnt, hi[ind[cnt-1]], initial)
-
-        def deglitch(x):
-            return medfilt(x,3)
-
-        thresh = deglitch(hyst(deglitch(walking_prob), 0.95, 0.75))
-
-        keep_idx = np.nonzero(thresh)[0]
-        if len(keep_idx) > 0:
-            breaks = np.where(np.diff(keep_idx) != 1)[0]
-            breaks = np.array([-1, *breaks, -1])
-            segments = zip(keep_idx[breaks[:-1]+1], keep_idx[breaks[1:]])
-            segments = [(s1, s2) for s1, s2 in segments if (s2 - s1) > 50]
-
-            key['walking_frames'] = [np.arange(s1, s2+1) for s1, s2 in segments]
-            key['num_walking_frames'] = np.sum([len(k) for k in key['walking_frames']])
-            key['segment_boundaries'] = segments
-
-        else:
-            key['walking_frames'] = []
-            key['segment_boundaries'] = []
-            key['num_walking_frames'] = 0
-
-        key['phases'] = phases
-        key['walking_prob'] = walking_prob
-
-        self.insert1(key)
-
-@schema
-class WalkingSegmentsVideo(dj.Computed):
-    definition = '''
-    -> WalkingSegments
-    -> BlurredVideo
-    ---
-    output_video      : attach@localattach    # datajoint managed video file
-    '''
-
-
-    def make(self, key):
-
-        from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
-        import tempfile
-
-        height, width, timestamps = (VideoInfo & key).fetch1('height', 'width', 'timestamps')
-        coco_keypoints = (TopDownPerson & key).fetch1('keypoints')
-        phases, walking_frames = (WalkingSegments & key).fetch1('phases', 'walking_frames')
-
-        bbox_fn = PersonBbox.get_overlay_fn(key)
-
-        phases = np.reshape(phases, [-1, 4, 2])
-        phases = np.arctan2(phases[:, :, 1], phases[:, :, 0])
-        left_down = phases[:, 0] < phases[:, 2]
-        right_down = phases[:, 1] < phases[:, 3]
-
-        ankle_idx = [TopDownPerson.joint_names().index(j) for j in ["Left Ankle", "Right Ankle"]]
-
-        def frame_phase(idx):
-            phase = phases[idx]
-            walking = np.any([idx in frames for frames in walking_frames])
-            down = [left_down[idx], right_down[idx]]
-
-            return walking, phase, down
-
-
-        def overlay_fn(image, idx):
-            walking, phase, down = frame_phase(idx)
-
-            image = draw_keypoints(image, coco_keypoints[idx], color=(0, 0, 255) if walking else (255, 255, 255))
-            image = bbox_fn(image, idx)
-
-            if walking:
-                if down[0]:
-                    image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[0]:ankle_idx[0]+1], radius=15, color=(0, 255, 0))
-                else:
-                    image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[0]:ankle_idx[0]+1], radius=15, color=(255, 0, 0))
-
-                if down[1]:
-                    image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[1]:ankle_idx[1]+1], radius=15, color=(0, 255, 0))
-                else:
-                    image = draw_keypoints(image, coco_keypoints[idx, ankle_idx[1]:ankle_idx[1]+1], radius=15, color=(255, 0, 0))
-
-            return image
-
-
-        video = (BlurredVideo & key).fetch1('output_video')
-
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
-        video_overlay(video, out_file_name, overlay_fn, downsample=1)
-        key['output_video'] = out_file_name
-
-        self.insert1(key)
-
-        os.remove(out_file_name)
-        os.remove(video)

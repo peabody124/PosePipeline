@@ -6,13 +6,11 @@ from .pipeline import PersonBboxValid, PersonBbox, BlurredVideo, DetectedFrames,
 from .pipeline import OpenPose, OpenPosePerson, OpenPosePersonVideo
 from .pipeline import CenterHMR, CenterHMRPerson, CenterHMRPersonVideo
 #from .pipeline import MMPoseTopDownPerson, MMPoseTopDownPersonVideo
-from .pipeline import GastNetPerson, GastNetPersonVideo
 #from .pipeline import PoseWarperPerson, PoseWarperPersonVideo
 #from .pipeline import PoseFormerPerson
 from .pipeline import TopDownMethodLookup, TopDownMethod, TopDownPerson, TopDownPersonVideo
-from .pipeline import LiftingMethodLookup, LiftingMethod, LiftingPerson
+from .pipeline import LiftingMethodLookup, LiftingMethod, LiftingPerson, LiftingPersonVideo
 from .pipeline import SMPLMethodLookup, SMPLMethod, SMPLPerson, SMPLPersonVideo
-from .pipeline import WalkingSegments, WalkingSegmentsVideo
 
 
 from .env import add_path, set_environmental_variables
