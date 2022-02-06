@@ -925,15 +925,32 @@ class SMPLPerson(dj.Computed):
         self.insert1(res)
 
     @staticmethod
-    def joint_names():
+    def joint_names(model='smpl'):
+        if model == 'smpl':
+            from .utils.smpl import JOINT_NAMES_49
+            return JOINT_NAMES_49
+        elif model == 'smplx':
             from smplx.joint_names import JOINT_NAMES
-            return JOINT_NAMES[:23]
+            return JOINT_NAMES
+
 
     @staticmethod
-    def keypoint_names():
-            with add_path(os.environ['MEVA_PATH']):
-                from meva.lib.smpl import JOINT_NAMES
-                return JOINT_NAMES
+    def smpl_joint_names(model='smpl'):
+        from smplx.joint_names import JOINT_NAMES
+
+        if model == 'smpl':
+            return JOINT_NAMES[:19]
+        elif model == 'smplx':
+            # in smplx models the pelvis orientation is in a different field (global orientation)
+            # as are the wrists
+            return JOINT_NAMES[1:21]
+        elif model == 'PIXIE':
+            # in addition to the dropped fields for smplx, Pixie also splits out the head and neck
+            # into additional fields
+            return [j for j in JOINT_NAMES[:20] if j not in ['pelvis', 'head', 'neck']]
+        else:
+            raise Exception('Unknown model type')
+
 
 
 @schema
@@ -952,7 +969,7 @@ class SMPLPersonVideo(dj.Computed):
         poses, betas, cams = (SMPLPerson & key).fetch1('poses', 'betas', 'cams')
 
         smpl_method_name = (SMPLMethodLookup & key).fetch1('smpl_method_name')
-        if smpl_method_name == 'ProHMR':
+        if smpl_method_name == 'ProHMR' or smpl_method_name == 'ProHMR_MMPose':
             from .wrappers.prohmr import get_prohmr_smpl_callback
             callback = get_prohmr_smpl_callback(key, poses, betas, cams)
         elif smpl_method_name == 'Expose':
