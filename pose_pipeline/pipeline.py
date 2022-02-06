@@ -646,6 +646,81 @@ class TopDownPerson(dj.Computed):
 
 
 @schema
+class SkeletonAction(dj.Computed):
+    definition = '''
+    -> TopDownPerson
+    method            : varchar(50)
+    ---
+    top5              : longblob
+    action_scores     : longblob
+    label_map         : longblob
+    action_window_len : int
+    stride            : int
+    computed_timestamp=CURRENT_TIMESTAMP : timestamp    # automatic timestamp
+    '''
+
+    # Note: this will likely be refactored with a lookup table in the near future
+    # to support different methods
+    def make(self, key):
+
+        from pose_pipeline.wrappers.mmaction import mmaction_skeleton_action_person
+        key = mmaction_skeleton_action_person(key, stride=1)
+        key['method'] = 'mmaction_skeleton'
+        self.insert1(key)
+
+
+@schema
+class SkeletonActionVideo(dj.Computed):
+    definition = '''
+    -> SkeletonAction
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    '''
+
+    def make(self, key):
+        from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
+
+        video = (BlurredVideo & key).fetch1('output_video')
+        keypoints = (TopDownPerson & key).fetch1('keypoints')
+
+        bbox_fn = PersonBbox.get_overlay_fn(key)
+        bbox = (PersonBbox & key).fetch1('bbox')
+
+        top5_actions, stride = (SkeletonAction & key).fetch1('top5', 'stride')
+
+        def overlay_fn(image, idx):
+            image = draw_keypoints(image, keypoints[idx], radius=20, color=(0, 255, 0))
+            image = bbox_fn(image, idx, width=14, color=(0, 0, 255))
+
+            top5 = top5_actions[min(len(top5_actions)-1, idx // stride)]
+
+            top_left = bbox[idx, :2]
+            for i, (action, score) in enumerate(top5):
+                if score > 0.1:
+                    label = f'{action.capitalize()}: {score:0.3}'
+
+                    fontsize = 1.0e-3 * image.shape[0]
+                    textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, fontsize, 4)[0]
+
+                    coord = (int(top_left[0] + 5), int(top_left[1] + (10 + textsize[1]) * (1+i)))
+                    cv2.putText(image, label, coord, 0, fontsize, (255, 255, 255), thickness=4)
+
+            return image
+
+        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        video_overlay(video, out_file_name, overlay_fn, downsample=1)
+
+        key['output_video'] = out_file_name
+
+        self.insert1(key)
+
+        os.remove(out_file_name)
+        os.remove(video)
+
+        return out_file_name
+
+
+@schema
 class LiftingMethodLookup(dj.Lookup):
     definition = '''
     lifting_method      : int
