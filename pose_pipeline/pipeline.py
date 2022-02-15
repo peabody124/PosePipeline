@@ -1169,6 +1169,25 @@ class HumorPerson(dj.Computed):
 
         self.insert1(res)
 
+
+@schema
+class HumorPersonVideo(dj.Computed):
+    definition = '''
+    -> HumorPerson
+    ----
+    output_video      : attach@localattach    # datajoint managed video file
+    '''
+
+    def make(self, key):
+
+        from pose_pipeline.wrappers.humor import render_humor
+
+        video = render_humor(key)
+        key['output_video'] = video
+
+        self.insert1(res)
+
+
 @schema
 class TopDownPersonVideo(dj.Computed):
     definition = """
