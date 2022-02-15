@@ -692,6 +692,9 @@ class SkeletonActionVideo(dj.Computed):
             image = draw_keypoints(image, keypoints[idx], radius=20, color=(0, 255, 0))
             image = bbox_fn(image, idx, width=14, color=(0, 0, 255))
 
+            if np.any(np.isnan(bbox[idx])):
+                return image
+
             top5 = top5_actions[min(len(top5_actions)-1, idx // stride)]
 
             top_left = bbox[idx, :2]
