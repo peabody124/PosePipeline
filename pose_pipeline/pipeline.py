@@ -929,12 +929,18 @@ class SMPLPerson(dj.Computed):
 
     @staticmethod
     def joint_names(model='smpl'):
-        if model == 'smpl':
+        if model.upper() == 'SMPL':
             from .utils.smpl import JOINT_NAMES_49
             return JOINT_NAMES_49
-        elif model == 'smplx':
+        elif model.upper() in ['SMPLX', 'SMPL-X']:
             from smplx.joint_names import JOINT_NAMES
             return JOINT_NAMES
+        elif model.upper() == 'PIXIE':
+            # frustratingly, Pixie does not use the default keypoint ordering
+            # TODO: can likely remove the cfg.model.extra_joint_path setting and get defaults
+            with add_path(os.environ['PIXIE_PATH']):
+                from pixielib.models.SMPLX import SMPLX_names as pixie_joint_names
+            return pixie_joint_names
 
 
     @staticmethod
@@ -1188,7 +1194,7 @@ class HumorPersonVideo(dj.Computed):
         video = render_humor(key)
         key['output_video'] = video
 
-        self.insert1(res)
+        self.insert1(key)
 
 
 @schema
