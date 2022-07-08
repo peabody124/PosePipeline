@@ -7,8 +7,9 @@ import os
 def compress(fn):
     import subprocess
 
-    _, temp = tempfile.mkstemp(suffix='.mp4')
+    fd, temp = tempfile.mkstemp(suffix='.mp4')
     subprocess.run(['ffmpeg', '-y', '-i', fn, '-c:v', 'libx264', '-b:v', '5M', temp])
+    os.close(fd)
     return temp
 
 
