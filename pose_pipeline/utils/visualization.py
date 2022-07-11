@@ -1,6 +1,7 @@
 import os
 import cv2
 import tempfile
+import shutil
 import subprocess
 import numpy as np
 from tqdm import tqdm
@@ -103,9 +104,10 @@ def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur
     cap.release()
 
     if compress:
-        _, temp = tempfile.mkstemp(suffix='.mp4')
+        fd, temp = tempfile.mkstemp(suffix='.mp4')
         subprocess.run(['ffmpeg', '-y', '-i', output_name, '-c:v', 'libx264', '-b:v', bitrate, temp])
-        subprocess.run(['mv', temp, output_name])
+        os.close(fd)
+        shutil.move(temp,output_name)
 
 
 def draw_keypoints(image, keypoints, radius=10, threshold=0.2, color=(255, 255, 255)):

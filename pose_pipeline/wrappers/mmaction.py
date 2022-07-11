@@ -104,7 +104,8 @@ class TopDownPersonVideo(dj.Computed):
             image = bbox_fn(image, idx)
             return image
 
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        fd, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        os.close(fd)
         video_overlay(video, out_file_name, overlay_fn, downsample=1)
 
         key['output_video'] = out_file_name
