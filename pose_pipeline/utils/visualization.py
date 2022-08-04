@@ -7,55 +7,9 @@ from tqdm import tqdm
 
 from pose_pipeline import VideoInfo, PersonBbox, SMPLPerson
 
-class FaceBlur:
-    """ cv2 based Facial Blur method. Not very quick or accurate """
-
-    def __init__(self):
-        base_path = os.path.join(os.path.split(__file__)[0], './weights')
-        prototxt_path = os.path.join(base_path, 'deploy.prototxt')
-        model_path = os.path.join(base_path, 'res10_300x300_ssd_iter_140000_fp16.caffemodel')
-        self.model = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
-
-    def detect_faces(self, image):
-        blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), (104.0, 177.0, 123.0))
-        self.model.setInput(blob)
-        output = np.squeeze(self.model.forward())
-        return output
-
-    def blur_faces(self, image):
-        faces = self.detect_faces(image)
-
-        h, w = image.shape[:2]
-
-        kernel_width = (w // 7) | 1
-        kernel_height = (h // 7) | 1
-
-        for i in range(0, faces.shape[0]):
-            confidence = faces[i, 2]
-            # get the confidence
-            # if confidence is above 40%, then blur the bounding box (face)
-            if confidence > 0.1:
-                # get the surrounding box cordinates and upscale them to original image
-                box = faces[i, 3:7] * np.array([w, h, w, h])
-                # convert to integers
-                start_x, start_y, end_x, end_y = box.astype(int)
-
-                #print(start_x, start_y, end_x, end_y)
-                # get the face image
-                face = image[start_y: end_y, start_x: end_x]
-                # apply gaussian blur to this face
-                face = cv2.GaussianBlur(face, (kernel_width, kernel_height), 0)
-                # put the blurred face into the original image
-                image[start_y: end_y, start_x: end_x] = face
-
-        return image
-
-    def __call__(self, image):
-        return self.blur_faces(image)
-
 
 def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur_faces=False,
-                  compress=True, bitrate='5M'):
+                  compress=True, bitrate='5M', max_frames=None):
     """ Process a video and create overlay image
 
         Args:
@@ -80,6 +34,9 @@ def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur
 
     if blur_faces:
         blur = FaceBlur()
+
+    if max_frames:
+        total_frames = max_frames
 
     for idx in tqdm(range(total_frames)):
 
@@ -142,3 +99,5 @@ def get_smpl_callback(key, poses, betas, cams):
         return frame
 
     return overlay
+
+
