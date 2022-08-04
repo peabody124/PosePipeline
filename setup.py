@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pose_pipeline",
-    version="0.0.1",
+    version="0.1.0",
     author="James Cotton",
     author_email="peabody124@gmail.com",
     description="Video pose analysis pipelines for DataJoint.",
