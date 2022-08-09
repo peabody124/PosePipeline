@@ -1,0 +1,30 @@
+{
+    "connection.charset": "",
+    "connection.init_function": null,
+    "database.host": "127.0.0.1",
+    "database.password": "pose",
+    "database.port": 3306,
+    "database.reconnect": false,
+    "database.use_tls": false,
+    "database.user": "root",
+    "display.limit": 30,
+    "display.show_tuple_count": true,
+    "display.width": 14,
+    "enable_python_native_blobs": true,
+    "fetch_format": "array",
+    "loglevel": "INFO",
+    "safemode": true,
+    "custom": {
+               "database.prefix": "",
+               "pose_root_package_dir":
+                   [
+                    "/home/jcotton/projects/pose/",
+                    ""
+                   ],
+                "pose_root_data_dir":
+                   [
+                    "/home/jcotton/projects/pose/",
+                    "/home/jcotton/projects/alt/"
+                   ]
+               }
+}

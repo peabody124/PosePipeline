@@ -29,3 +29,7 @@ MANIFEST
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Notes/Config 
+temp*
+dj_local_con*.json

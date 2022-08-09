@@ -12,7 +12,12 @@ import datajoint as dj
 from .utils.keypoint_matching import match_keypoints_to_bbox
 from .env import add_path
 
-schema = dj.schema('pose_pipeline')
+if "custom" not in dj.config:
+    dj.config["custom"] = {}
+
+db_prefix = dj.config["custom"].get("database.prefix", "")
+
+schema = dj.schema(db_prefix +'pose_pipeline')
 
 
 @schema
