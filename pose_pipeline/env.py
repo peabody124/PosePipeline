@@ -127,14 +127,14 @@ def set_environmental_variables(dependencies=dependencies, git_clone=False):
                                           dependencies[package]['rel_path'])
         except FileNotFoundError:
             if git_clone:
-                cmd = (
+                os.system(
                     f"git -C {get_pose_root_package_dir()[0]} clone " + 
                     f"https://github.com/{dependencies[package]['git_repo']}"
                 )
-                os.system(cmd)
                 package_path = find_full_path(get_pose_root_package_dir(), 
                                               dependencies[package]['rel_path'])
             else:
+                logger.warn(f"Could not find {package}")
                 continue
         os.environ[dependencies[package]['env_var']] = package_path
 
