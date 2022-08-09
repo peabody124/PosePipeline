@@ -48,3 +48,25 @@ def set_environmental_variables():
         # In Ubuntu, using osmesa mode for rendering
         os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
+def pytorch_memory_limit(frac=0.5):
+    # limit pytorch memory
+    import torch
+    torch.cuda.set_per_process_memory_fraction(frac, 0)
+    torch.cuda.empty_cache()
+
+
+def tensorflow_memory_limit():
+    # limit tensorflow memory. there are also other approaches
+    # https://www.tensorflow.org/guide/gpu#limiting_gpu_memory_growth
+    import tensorflow as tf
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        try:
+            # Currently, memory growth needs to be the same across GPUs
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            logical_gpus = tf.config.list_logical_devices('GPU')
+            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        except RuntimeError as e:
+            # Memory growth must be set before GPUs have been initialized
+            print(e)
