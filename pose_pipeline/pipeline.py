@@ -223,7 +223,8 @@ class TrackingBboxMethodLookup(dj.Lookup):
         {'tracking_method': 3, 'tracking_method_name': 'TransTrack'},
         {'tracking_method': 4, 'tracking_method_name': 'TraDeS'},
         {'tracking_method': 5, 'tracking_method_name': 'MMTrack_deepsort'},
-        {'tracking_method': 6, 'tracking_method_name': 'MMTrack_bytetrack'}
+        {'tracking_method': 6, 'tracking_method_name': 'MMTrack_bytetrack'},
+        {'tracking_method': 7, 'tracking_method_name': 'MMTrack_qdtrack'}
     ]
 
 @schema
@@ -265,6 +266,11 @@ class TrackingBbox(dj.Computed):
         elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'MMTrack_bytetrack':
             from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
             tracks = mmtrack_bounding_boxes(video, 'bytetrack')
+            key['tracks'] = tracks
+
+        elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'MMTrack_qdtrack':
+            from pose_pipeline.wrappers.mmtrack import mmtrack_bounding_boxes
+            tracks = mmtrack_bounding_boxes(video, 'qdtrack')
             key['tracks'] = tracks
 
         elif (TrackingBboxMethodLookup & key).fetch1('tracking_method_name') == 'FairMOT':
