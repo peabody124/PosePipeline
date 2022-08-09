@@ -6,6 +6,7 @@ import tempfile
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+import shutil
 
 import datajoint as dj
 
@@ -49,8 +50,10 @@ class Video(dj.Manual):
 
         # fetch video and place in temp directory
         video = (Video & key).fetch1('video')
-        _, outfile = tempfile.mkstemp(suffix='.mp4')
-        subprocess.run(['mv', video, outfile])
+        fd, outfile = tempfile.mkstemp(suffix='.mp4')
+        os.close(fd)
+        shutil.move(video,outfile)
+
         video = outfile
 
         cap = cv2.VideoCapture(video)
@@ -60,9 +63,10 @@ class Video(dj.Manual):
         completed = True
 
         def compress(video):
-            _, outfile = tempfile.mkstemp(suffix='.mp4')
+            fd, outfile = tempfile.mkstemp(suffix='.mp4')
             print(f'Unable to read all the fails. Transcoding {video} to {outfile}')
             subprocess.run(['ffmpeg', '-y', '-i', video, '-c:v', 'libx264', '-b:v', '1M', outfile])
+            os.close(fd)
             return outfile
 
         for i in range(expected_frames):
@@ -108,6 +112,7 @@ class VideoInfo(dj.Computed):
         key['delta_time'] = [timedelta(0, i / fps).total_seconds() for i in range(frames)]
         self.insert1(key)
 
+        cap.release()
         os.remove(video)
 
     def fetch_timestamps(self):
@@ -193,44 +198,20 @@ class OpenPose(dj.Computed):
 class BlurredVideo(dj.Computed):
     definition = '''
     -> Video
-    -> OpenPose
     ---
     output_video      : attach@localattach    # datajoint managed video file
     '''
 
     def make(self, key):
 
-        from pose_pipeline.utils.visualization import video_overlay
+        from .wrappers.facenet import blur_faces
 
-        video = Video.get_robust_reader(key, return_cap=False)
-        keypoints = (OpenPose & key).fetch1('keypoints')
+        blurred_video = blur_faces(key)
 
-        def overlay_callback(image, idx):
-            image = image.copy()
-            if keypoints[idx] is None:
-                return image
-
-            found_noses = keypoints[idx][:, 0, -1] > 0.1
-            nose_positions = keypoints[idx][found_noses, 0, :2]
-            neck_positions = keypoints[idx][found_noses, 1, :2]
-
-            radius = np.linalg.norm(neck_positions - nose_positions, axis=1)
-            radius = np.clip(radius, 10, 250)
-
-            for i in range(nose_positions.shape[0]):
-                center = (int(nose_positions[i, 0]), int(nose_positions[i, 1]))
-                cv2.circle(image, center, int(radius[i]), (255, 255, 255), -1)
-
-            return image
-
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
-        video_overlay(video, out_file_name, overlay_callback, downsample=1)
-
-        key['output_video'] = out_file_name
+        key['output_video'] = blurred_video
         self.insert1(key)
 
-        os.remove(out_file_name)
-        os.remove(video)
+        os.remove(blurred_video)
 
 
 @schema
@@ -363,7 +344,8 @@ class TrackingBboxVideo(dj.Computed):
 
             return image
 
-        _, fname = tempfile.mkstemp(suffix='.mp4')
+        fd, fname = tempfile.mkstemp(suffix='.mp4')
+        os.close(fd)
         video_overlay(video, fname, overlay_callback, downsample=1)
 
         key['output_video'] = fname
@@ -581,7 +563,8 @@ class OpenPosePersonVideo(dj.Computed):
         keypoints, hand_keypoints = (OpenPosePerson & key).fetch1('keypoints', 'hand_keypoints')
         video_filename = (BlurredVideo & key).fetch1('output_video')
 
-        _, fname = tempfile.mkstemp(suffix='.mp4')
+        fd, fname = tempfile.mkstemp(suffix='.mp4')
+        os.close(fd)
 
         video = (BlurredVideo & key).fetch1('output_video')
         keypoints = (OpenPosePerson & key).fetch1('keypoints')
@@ -592,7 +575,8 @@ class OpenPosePersonVideo(dj.Computed):
             image = draw_keypoints(image, hand_keypoints[idx, 1], threshold=0.02)
             return image
 
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        ofd, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        os.close(ofd)
         video_overlay(video, out_file_name, overlay, downsample=4)
         key['output_video'] = out_file_name
 
@@ -715,7 +699,8 @@ class SkeletonActionVideo(dj.Computed):
 
             return image
 
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        fd, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        os.close(fd)
         video_overlay(video, out_file_name, overlay_fn, downsample=1)
 
         key['output_video'] = out_file_name
@@ -801,7 +786,8 @@ class LiftingPersonVideo(dj.Computed):
         keypoints_3d = (LiftingPerson & key).fetch1('keypoints_3d').copy()
         blurred_video = (BlurredVideo & key).fetch1('output_video')
         width, height, fps = (VideoInfo & key).fetch1('width', 'height', 'fps')
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        fd, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        os.close(fd)
 
         with add_path(os.environ["GAST_PATH"]):
 
@@ -999,12 +985,12 @@ class SMPLPersonVideo(dj.Computed):
         video = (BlurredVideo & key).fetch1('output_video')
 
         fd, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        os.close(fd)
         video_overlay(video, out_file_name, callback, downsample=1)
         key['output_video'] = out_file_name
 
         self.insert1(key)
 
-        os.close(fd)
         os.remove(video)
 
 
@@ -1118,7 +1104,8 @@ class CenterHMRPersonVideo(dj.Computed):
         pose_data = (CenterHMRPerson & key).fetch1()
         video_filename = (BlurredVideo & key).fetch1('output_video')
 
-        _, fname = tempfile.mkstemp(suffix='.mp4')
+        fd, fname = tempfile.mkstemp(suffix='.mp4')
+        os.close(fd)
 
         video = (BlurredVideo & key).fetch1('output_video')
 
@@ -1148,7 +1135,8 @@ class CenterHMRPersonVideo(dj.Computed):
             return overlay.renderer(verts, cam, img=image)
         overlay.renderer = None
 
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        ofd, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        os.close(ofd)
         video_overlay(video, out_file_name, overlay, downsample=4)
         key['output_video'] = out_file_name
 
@@ -1225,7 +1213,8 @@ class TopDownPersonVideo(dj.Computed):
             image = bbox_fn(image, idx)
             return image
 
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        fd, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        os.close(fd)
         video_overlay(video, out_file_name, overlay_fn, downsample=1)
 
         key['output_video'] = out_file_name
