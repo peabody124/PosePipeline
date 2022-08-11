@@ -9,21 +9,22 @@ from pose_pipeline.env import add_path
 from pose_pipeline import VideoInfo
 import torch
 
+
 def process_pare(key):
 
-    crop_size=224
+    crop_size = 224
 
-    pare_config = os.path.join(MODEL_DATA_DIR, 'pare/pare_w_3dpw_config.yaml')
-    pare_checkpoint = os.path.join(MODEL_DATA_DIR, 'pare/pare_w_3dpw_checkpoint.ckpt')
+    pare_config = os.path.join(MODEL_DATA_DIR, "pare/pare_w_3dpw_config.yaml")
+    pare_checkpoint = os.path.join(MODEL_DATA_DIR, "pare/pare_w_3dpw_checkpoint.ckpt")
 
-    with add_path(os.environ['PARE_PATH']):
+    with add_path(os.environ["PARE_PATH"]):
 
         from pare.core.config import get_hparams_defaults, update_hparams, update_hparams_from_dict
         from pare.models import PARE
 
         model_cfg = update_hparams(pare_config)
-        
-        device = 'cuda'
+
+        device = "cuda"
         model = PARE(
             backbone=model_cfg.PARE.BACKBONE,
             num_joints=model_cfg.PARE.NUM_JOINTS,
@@ -67,12 +68,12 @@ def process_pare(key):
             init_xavier=model_cfg.PARE.INIT_XAVIER,
         ).to(device)
 
-        ckpt = torch.load(pare_checkpoint)['state_dict']
+        ckpt = torch.load(pare_checkpoint)["state_dict"]
         pretrained_keys = ckpt.keys()
         new_state_dict = OrderedDict()
         for pk in pretrained_keys:
-            if pk.startswith('model.'):
-                new_state_dict[pk.replace('model.', '')] = ckpt[pk]
+            if pk.startswith("model."):
+                new_state_dict[pk.replace("model.", "")] = ckpt[pk]
             else:
                 new_state_dict[pk] = ckpt[pk]
         model.load_state_dict(new_state_dict, strict=False)
@@ -81,9 +82,18 @@ def process_pare(key):
         frame_ids, dataloader, bbox = get_person_dataloader(key, crop_size=crop_size)
 
         with torch.no_grad():
-            pred_cam, pred_verts, pred_pose, pred_betas, pred_joints3d, smpl_joints2d, norm_joints2d = [], [], [], [], [], [], []
+            pred_cam, pred_verts, pred_pose, pred_betas, pred_joints3d, smpl_joints2d, norm_joints2d = (
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+            )
 
             from scipy.spatial.transform import Rotation as R
+
             to_rotvec = lambda x: np.array(list(map(lambda y: R.from_matrix(y).as_rotvec(), x))).reshape(-1, 72)
 
             for batch in tqdm(dataloader):
@@ -92,23 +102,23 @@ def process_pare(key):
 
                 batch_size, seqlen = batch.shape[:2]
                 output = model(batch)
-                
-                pred_cam.append(output['pred_cam'].cpu().detach().numpy())
-                pred_verts.append(output['smpl_vertices'].cpu().detach().numpy())
-                pred_pose.append(to_rotvec(output['pred_pose'].cpu().detach().numpy()))
-                pred_betas.append(output['pred_shape'].cpu().detach().numpy())
-                pred_joints3d.append(output['smpl_joints3d'].cpu().detach().numpy())
-                smpl_joints2d.append(output['smpl_joints2d'].cpu().detach().numpy())
 
-    key['cams'] = np.concatenate(pred_cam, axis=0)
-    key['verts'] = np.concatenate(pred_verts, axis=0)
-    key['poses'] = np.concatenate(pred_pose, axis=0)
-    key['betas'] = np.concatenate(pred_betas, axis=0)
-    key['joints3d'] = np.concatenate(pred_joints3d, axis=0)
-    key['joints2d'] = np.concatenate(smpl_joints2d, axis=0)
+                pred_cam.append(output["pred_cam"].cpu().detach().numpy())
+                pred_verts.append(output["smpl_vertices"].cpu().detach().numpy())
+                pred_pose.append(to_rotvec(output["pred_pose"].cpu().detach().numpy()))
+                pred_betas.append(output["pred_shape"].cpu().detach().numpy())
+                pred_joints3d.append(output["smpl_joints3d"].cpu().detach().numpy())
+                smpl_joints2d.append(output["smpl_joints2d"].cpu().detach().numpy())
 
-    height, width = (VideoInfo & key).fetch1('height', 'width')
-    key['cams'] = convert_crop_cam_to_orig_img(key['cams'], bbox, width, height)
-    key['joints2d'] = convert_crop_coords_to_orig_img(bbox, key['joints2d'], crop_size)
+    key["cams"] = np.concatenate(pred_cam, axis=0)
+    key["verts"] = np.concatenate(pred_verts, axis=0)
+    key["poses"] = np.concatenate(pred_pose, axis=0)
+    key["betas"] = np.concatenate(pred_betas, axis=0)
+    key["joints3d"] = np.concatenate(pred_joints3d, axis=0)
+    key["joints2d"] = np.concatenate(smpl_joints2d, axis=0)
+
+    height, width = (VideoInfo & key).fetch1("height", "width")
+    key["cams"] = convert_crop_cam_to_orig_img(key["cams"], bbox, width, height)
+    key["joints2d"] = convert_crop_coords_to_orig_img(bbox, key["joints2d"], crop_size)
 
     return key
