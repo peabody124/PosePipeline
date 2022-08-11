@@ -5,7 +5,7 @@ def play(video, width=640):
     video_kwargs = {'width': width, 'html_attributes': "controls autoplay loop"}
     video = video.fetch1('output_video')
     display(Video(video, **video_kwargs))
-      
+
 
 def play_grid(videos, height=200):
     # nicely handle a single row

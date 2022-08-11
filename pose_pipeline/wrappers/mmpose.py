@@ -7,7 +7,7 @@ from pose_pipeline import Video, PersonBbox
 
 
 def mmpose_top_down_person(key):
-    
+
     from mmpose.apis import init_pose_model, inference_top_down_pose_model
     from tqdm import tqdm
 
@@ -33,9 +33,9 @@ def mmpose_top_down_person(key):
             continue
 
         bbox_wrap = {'bbox': bbox}
-        
+
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        
+
         res = inference_top_down_pose_model(model, frame, [bbox_wrap])[0]
         results.append(res[0]['keypoints'])
 
@@ -43,7 +43,7 @@ def mmpose_top_down_person(key):
 
 
 def mmpose_whole_body(key):
-    # keypoint order can be found in 
+    # keypoint order can be found in
     # https://github.com/jin-s13/COCO-WholeBody
 
     from mmpose.apis import init_pose_model, inference_top_down_pose_model
@@ -89,22 +89,25 @@ def mmpose_bottom_up(key):
     pose_cfg = os.path.join(MODEL_DATA_DIR, 'mmpose/config/bottom_up/higherhrnet/coco/higher_hrnet48_coco_512x512.py')
     pose_ckpt = os.path.join(MODEL_DATA_DIR, 'mmpose/checkpoints/higher_hrnet48_coco_512x512-60fedcbc_20200712.pth')
 
+    pose_cfg = '/home/jcotton/projects/pose/mmpose/configs/body/2d_kpt_sview_rgb_img/associative_embedding/coco/mobilenetv2_coco_512x512.py'
+    pose_ckpt = os.path.join(MODEL_DATA_DIR, 'mmpose/checkpoints/mobilenetv2_coco_512x512-4d96e309_20200816.pth')
+
     model = init_pose_model(pose_cfg, pose_ckpt)
 
     video = Video.get_robust_reader(key, return_cap=False)
     cap = cv2.VideoCapture(video)
 
     video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
+
     keypoints = []
     for frame_id in tqdm(range(video_length)):
 
         # should match the length of identified person tracks
         ret, frame = cap.read()
         assert ret and frame is not None
-        
+
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        
+
         res = inference_bottom_up_pose_model(model, frame)[0]
 
         kps = np.stack([x['keypoints'] for x in res], axis=0)
@@ -114,4 +117,3 @@ def mmpose_bottom_up(key):
     os.remove(video)
 
     return np.asarray(keypoints)
-    
