@@ -189,7 +189,7 @@ def get_pixie_callback(key):
             visdict = visualizer.render_results(opdict, sample['image_hd'].to(device), overlay=True) #, use_deca=True, moderator_weight=param_dict['moderator_weight'])
 
             # color_shape_images
-            image_out = visdict['shape_images'].detach().cpu().numpy()[0]
+            image_out = visdict['shape_images'].detach().cpu().numpy()[0]*0.5 + sample['image_hd'].detach().cpu().numpy()[0]*0.5
             image_out = image_out.transpose([1, 2, 0])
             image_out = np.clip(image_out * 255, 0, 255).astype(np.uint8)
 
