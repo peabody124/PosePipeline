@@ -5,7 +5,7 @@ import os
 
 from pose_pipeline import Video
 
-def blur_faces(key):
+def blur_faces(key, downsample=8):
 
     from tqdm import trange
     from facenet_pytorch import MTCNN
@@ -23,7 +23,17 @@ def blur_faces(key):
     def overlay_callback(image, idx, margin=10):
         image = image.copy()
 
-        boxes, _ = mtcnn.detect(image)
+        if downsample is not None and downsample > 0:
+
+            image_ds = cv2.resize(image, (image.shape[1] // downsample, image.shape[0] // downsample))
+            boxes, _ = mtcnn.detect(image_ds)
+
+            if boxes is None:
+                return image
+
+            boxes = boxes * downsample
+        else:
+            boxes, _ = mtcnn.detect(image)
 
         if boxes is None:
             return image
