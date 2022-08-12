@@ -1,7 +1,10 @@
 datajoint
+matplotlib
+numpy
+tensorflow
 opencv-python>=4.5.1
 pyrender>=0.1.45
 mmcv-full
 mmdet
-mmtracking
+mmtrack
 mmpose
