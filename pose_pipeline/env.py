@@ -1,4 +1,3 @@
-
 import os
 import sys
 import logging
@@ -107,31 +106,31 @@ class add_path():
 
 def set_environmental_variables(dependencies=dependencies, git_clone=False):
     """For dependency listed below, checks that path exists and sets env variable.
-    
+
     Relies on `get_pose_root_package_dir` in .paths to determine where packages are.
-    If not present, optionally clones the git repository, which relies on git being 
+    If not present, optionally clones the git repository, which relies on git being
     available as a local OS command.
 
     Parameters
     ----------
     dependencies: Optional, default from this script. Dict of packages, with values of
                   dicts that specify local rel_path, desired env_var, and git_repo. E.g.
-                {"VIBE": {"rel_path": "VIBE", # relative to root from config 
+                {"VIBE": {"rel_path": "VIBE", # relative to root from config
                           "env_var" : "VIBE_PATH", # environment variable
                           "git_repo": "mkocabas/VIBE"}} # github.com implied
     git_clone: Optional, default false. If package is not found, download via git.
     """
     for package in dependencies:
         try:
-            package_path = find_full_path(get_pose_root_package_dir(), 
+            package_path = find_full_path(get_pose_root_package_dir(),
                                           dependencies[package]['rel_path'])
         except FileNotFoundError:
             if git_clone:
                 os.system(
-                    f"git -C {get_pose_root_package_dir()[0]} clone " + 
+                    f"git -C {get_pose_root_package_dir()[0]} clone " +
                     f"https://github.com/{dependencies[package]['git_repo']}"
                 )
-                package_path = find_full_path(get_pose_root_package_dir(), 
+                package_path = find_full_path(get_pose_root_package_dir(),
                                               dependencies[package]['rel_path'])
             else:
                 logger.warn(f"Could not find {package}")
@@ -139,7 +138,33 @@ def set_environmental_variables(dependencies=dependencies, git_clone=False):
         os.environ[dependencies[package]['env_var']] = package_path
 
     import platform
-    if 'Ubuntu' in platform.version():
-        # In Ubuntu, using osmesa mode for rendering
-        os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
+    if "Ubuntu" in platform.version():
+        # In Ubuntu, using osmesa mode for rendering
+        os.environ["PYOPENGL_PLATFORM"] = "egl"
+
+
+def pytorch_memory_limit(frac=0.5):
+    # limit pytorch memory
+    import torch
+
+    torch.cuda.set_per_process_memory_fraction(frac, 0)
+    torch.cuda.empty_cache()
+
+
+def tensorflow_memory_limit():
+    # limit tensorflow memory. there are also other approaches
+    # https://www.tensorflow.org/guide/gpu#limiting_gpu_memory_growth
+    import tensorflow as tf
+
+    gpus = tf.config.list_physical_devices("GPU")
+    if gpus:
+        try:
+            # Currently, memory growth needs to be the same across GPUs
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            logical_gpus = tf.config.list_logical_devices("GPU")
+            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        except RuntimeError as e:
+            # Memory growth must be set before GPUs have been initialized
+            print(e)

@@ -9,14 +9,23 @@ from tqdm import tqdm
 from pose_pipeline import VideoInfo, PersonBbox, SMPLPerson
 
 
-def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur_faces=False,
-                  compress=True, bitrate='5M', max_frames=None):
-    """ Process a video and create overlay image
+def video_overlay(
+    video,
+    output_name,
+    callback,
+    downsample=4,
+    codec="MP4V",
+    blur_faces=False,
+    compress=True,
+    bitrate="5M",
+    max_frames=None,
+):
+    """Process a video and create overlay image
 
-        Args:
-            video (str): filename for source
-            output_name (str): output filename
-            callback (fn(im, idx) -> im): method to overlay frame
+    Args:
+        video (str): filename for source
+        output_name (str): output filename
+        callback (fn(im, idx) -> im): method to overlay frame
     """
 
     cap = cv2.VideoCapture(video)
@@ -61,36 +70,36 @@ def video_overlay(video, output_name, callback, downsample=4, codec='MP4V', blur
     cap.release()
 
     if compress:
-        fd, temp = tempfile.mkstemp(suffix='.mp4')
-        subprocess.run(['ffmpeg', '-y', '-i', output_name, '-c:v', 'libx264', '-b:v', bitrate, temp])
+        fd, temp = tempfile.mkstemp(suffix=".mp4")
+        subprocess.run(["ffmpeg", "-y", "-i", output_name, "-c:v", "libx264", "-b:v", bitrate, temp])
         os.close(fd)
-        shutil.move(temp,output_name)
+        shutil.move(temp, output_name)
 
 
 def draw_keypoints(image, keypoints, radius=10, threshold=0.2, color=(255, 255, 255)):
-    """ Draw the keypoints on an image
-    """
+    """Draw the keypoints on an image"""
     image = image.copy()
     for i in range(keypoints.shape[0]):
         if keypoints[i, -1] > threshold:
             cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius, (0, 0, 0), -1)
             if radius > 2:
-                cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius-2, color, -1)
+                cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius - 2, color, -1)
     return image
 
 
 def get_smpl_callback(key, poses, betas, cams):
     from pose_estimation.body_models.smpl import SMPL
     from pose_estimation.util.pyrender_renderer import PyrendererRenderer
-    height, width = (VideoInfo & key).fetch1('height', 'width')
 
-    valid_idx = np.where((PersonBbox & key).fetch1('present'))[0]
+    height, width = (VideoInfo & key).fetch1("height", "width")
+
+    valid_idx = np.where((PersonBbox & key).fetch1("present"))[0]
 
     smpl = SMPL()
     renderer = PyrendererRenderer(smpl.get_faces(), img_size=(height, width))
     verts = smpl(poses, betas)[0].numpy()
 
-    joints2d = (SMPLPerson & key).fetch1('joints2d')
+    joints2d = (SMPLPerson & key).fetch1("joints2d")
 
     def overlay(frame, idx, renderer=renderer, verts=verts, cams=cams, joints2d=joints2d):
 
@@ -101,5 +110,3 @@ def get_smpl_callback(key, poses, betas, cams):
         return frame
 
     return overlay
-
-

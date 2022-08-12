@@ -4,7 +4,7 @@
 # Written by Bin Xiao (Bin.Xiao@microsoft.com)
 # Modified by Hanbin Dai (daihanbin.ac@gmail.com) and Feng Zhang (zhangfengwcy@gmail.com)
 # ------------------------------------------------------------------------------
-# 
+#
 # Imported from https://github.com/ilovepose/DarkPose/blob/master/lib/core/inference.py
 
 from __future__ import absolute_import
@@ -18,20 +18,19 @@ import cv2
 
 
 def transform_preds(coords, bbox, hm_size):
-    """ Transform predictions that are (0, 1) on the heatmap coordinates 
-        from a bounding box into src image coordinates """
+    """Transform predictions that are (0, 1) on the heatmap coordinates
+    from a bounding box into src image coordinates"""
 
     return bbox[:2] + coords / hm_size * bbox[2:]
 
 
 def get_max_preds(batch_heatmaps):
-    '''
+    """
     get predictions from score maps
     heatmaps: numpy.ndarray([batch_size, num_joints, height, width])
-    '''
-    assert isinstance(batch_heatmaps, np.ndarray), \
-        'batch_heatmaps should be numpy.ndarray'
-    assert batch_heatmaps.ndim == 4, 'batch_images should be 4-ndim'
+    """
+    assert isinstance(batch_heatmaps, np.ndarray), "batch_heatmaps should be numpy.ndarray"
+    assert batch_heatmaps.ndim == 4, "batch_images should be 4-ndim"
 
     batch_size = batch_heatmaps.shape[0]
     num_joints = batch_heatmaps.shape[1]
@@ -60,15 +59,14 @@ def taylor(hm, coord):
     heatmap_width = hm.shape[1]
     px = int(coord[0])
     py = int(coord[1])
-    if 1 < px < heatmap_width-2 and 1 < py < heatmap_height-2:
-        dx  = 0.5 * (hm[py][px+1] - hm[py][px-1])
-        dy  = 0.5 * (hm[py+1][px] - hm[py-1][px])
-        dxx = 0.25 * (hm[py][px+2] - 2 * hm[py][px] + hm[py][px-2])
-        dxy = 0.25 * (hm[py+1][px+1] - hm[py-1][px+1] - hm[py+1][px-1] \
-            + hm[py-1][px-1])
-        dyy = 0.25 * (hm[py+2*1][px] - 2 * hm[py][px] + hm[py-2*1][px])
-        derivative = np.matrix([[dx],[dy]])
-        hessian = np.matrix([[dxx,dxy],[dxy,dyy]])
+    if 1 < px < heatmap_width - 2 and 1 < py < heatmap_height - 2:
+        dx = 0.5 * (hm[py][px + 1] - hm[py][px - 1])
+        dy = 0.5 * (hm[py + 1][px] - hm[py - 1][px])
+        dxx = 0.25 * (hm[py][px + 2] - 2 * hm[py][px] + hm[py][px - 2])
+        dxy = 0.25 * (hm[py + 1][px + 1] - hm[py - 1][px + 1] - hm[py + 1][px - 1] + hm[py - 1][px - 1])
+        dyy = 0.25 * (hm[py + 2 * 1][px] - 2 * hm[py][px] + hm[py - 2 * 1][px])
+        derivative = np.matrix([[dx], [dy]])
+        hessian = np.matrix([[dxx, dxy], [dxy, dyy]])
         if dxx * dyy - dxy ** 2 != 0:
             hessianinv = hessian.I
             offset = -hessianinv * derivative
@@ -85,12 +83,12 @@ def gaussian_blur(hm, kernel):
     width = hm.shape[3]
     for i in range(batch_size):
         for j in range(num_joints):
-            origin_max = np.max(hm[i,j])
+            origin_max = np.max(hm[i, j])
             dr = np.zeros((height + 2 * border, width + 2 * border))
-            dr[border: -border, border: -border] = hm[i,j].copy()
+            dr[border:-border, border:-border] = hm[i, j].copy()
             dr = cv2.GaussianBlur(dr, (kernel, kernel), 0)
-            hm[i,j] = dr[border: -border, border: -border].copy()
-            hm[i,j] *= origin_max / np.max(hm[i,j])
+            hm[i, j] = dr[border:-border, border:-border].copy()
+            hm[i, j] *= origin_max / np.max(hm[i, j])
     return hm
 
 
@@ -105,14 +103,12 @@ def get_final_preds(config, hm, bbox):
     hm = np.log(hm)
     for n in range(coords.shape[0]):
         for p in range(coords.shape[1]):
-            coords[n,p] = taylor(hm[n][p], coords[n][p])
+            coords[n, p] = taylor(hm[n][p], coords[n][p])
 
     preds = coords.copy()
 
     # Transform back
     for i in range(coords.shape[0]):
-        preds[i] = transform_preds(
-            coords[i], bbox[i], [heatmap_width, heatmap_height]
-        )
+        preds[i] = transform_preds(coords[i], bbox[i], [heatmap_width, heatmap_height])
 
     return preds, maxvals
