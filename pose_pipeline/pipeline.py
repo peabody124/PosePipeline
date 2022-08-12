@@ -17,7 +17,7 @@ if "custom" not in dj.config:
 
 db_prefix = dj.config["custom"].get("database.prefix", "")
 
-schema = dj.schema(db_prefix +"pose_pipeline")
+schema = dj.schema(db_prefix + "pose_pipeline")
 
 
 @schema

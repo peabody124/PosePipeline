@@ -11,6 +11,7 @@ def get_pose_root_data_dir():
     else:
         return pose_data_dirs
 
+
 def get_pose_root_package_dir():
     pose_package_dirs = dj.config.get("custom", {}).get("pose_root_package_dir")
     if not pose_package_dirs:

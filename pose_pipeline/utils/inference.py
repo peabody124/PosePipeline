@@ -67,7 +67,7 @@ def taylor(hm, coord):
         dyy = 0.25 * (hm[py + 2 * 1][px] - 2 * hm[py][px] + hm[py - 2 * 1][px])
         derivative = np.matrix([[dx], [dy]])
         hessian = np.matrix([[dxx, dxy], [dxy, dyy]])
-        if dxx * dyy - dxy ** 2 != 0:
+        if dxx * dyy - dxy**2 != 0:
             hessianinv = hessian.I
             offset = -hessianinv * derivative
             offset = np.squeeze(np.array(offset.T), axis=0)

@@ -26,10 +26,7 @@ def find_full_path(root_directories, relative_path):
         if (_to_Path(root_dir) / relative_path).exists():
             return _to_Path(root_dir) / relative_path
 
-    raise FileNotFoundError(
-        "No valid full-path found (from {})"
-        " for {}".format(root_directories, relative_path)
-    )
+    raise FileNotFoundError("No valid full-path found (from {})" " for {}".format(root_directories, relative_path))
 
 
 def find_root_directory(root_directories, full_path):
@@ -50,17 +47,10 @@ def find_root_directory(root_directories, full_path):
         root_directories = [_to_Path(root_directories)]
 
     try:
-        return next(
-            _to_Path(root_dir)
-            for root_dir in root_directories
-            if _to_Path(root_dir) in set(full_path.parents)
-        )
+        return next(_to_Path(root_dir) for root_dir in root_directories if _to_Path(root_dir) in set(full_path.parents))
 
     except StopIteration:
-        raise FileNotFoundError(
-            "No valid root directory found (from {})"
-            " for {}".format(root_directories, full_path)
-        )
+        raise FileNotFoundError("No valid root directory found (from {})" " for {}".format(root_directories, full_path))
 
 
 def _to_Path(path):
@@ -69,4 +59,3 @@ def _to_Path(path):
     Handles one odd Windows/Linux incompatibility of the "\\"
     """
     return pathlib.Path(str(path).replace("\\", "/"))
-
