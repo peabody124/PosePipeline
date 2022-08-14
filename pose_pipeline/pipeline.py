@@ -555,6 +555,36 @@ class OpenPosePerson(dj.Computed):
 
         self.insert1(key)
 
+    @staticmethod
+    def joint_names():
+        return [
+            "Nose",
+            "Sternum",
+            "Right Shoulder",
+            "Right Elbow",
+            "Right Wrist",
+            "Left Shoulder",
+            "Left Elbow",
+            "Left Wrist",
+            "Pelvis",
+            "Right Hip",
+            "Right Knee",
+            "Right Ankle",
+            "Left Hip",
+            "Left Knee",
+            "Left Ankle",
+            "Right Eye",
+            "Left Eye",
+            "Right Ear",
+            "Left Ear",
+            "Left Big Toe",
+            "Left Little Toe",
+            "Left Heel",
+            "Right Big Toe",
+            "Right Little Toe",
+            "Right Heel"
+        ]
+
 
 @schema
 class OpenPosePersonVideo(dj.Computed):
@@ -606,6 +636,8 @@ class TopDownMethodLookup(dj.Lookup):
     contents = [
         {"top_down_method": 0, "top_down_method_name": "MMPose"},
         {"top_down_method": 1, "top_down_method_name": "MMPoseWholebody"},
+        {"top_down_method": 2, "top_down_method_name": "MMPoseHalpe"},
+        {"top_down_method": 3, "top_down_method_name": "MMPoseHrformerCoco"},
     ]
 
 
@@ -629,12 +661,16 @@ class TopDownPerson(dj.Computed):
 
         if (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPose":
             from .wrappers.mmpose import mmpose_top_down_person
-
-            key["keypoints"] = mmpose_top_down_person(key)
+            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_COCO')
         elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseWholebody":
-            from .wrappers.mmpose import mmpose_whole_body
-
-            key["keypoints"] = mmpose_whole_body(key)
+            from .wrappers.mmpose import mmpose_top_down_person
+            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_COCOWholeBody')
+        elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseHalpe":
+            from .wrappers.mmpose import mmpose_top_down_person
+            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_HALPE')
+        elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseHrformerCoco":
+            from .wrappers.mmpose import mmpose_top_down_person
+            key["keypoints"] = mmpose_top_down_person(key, 'HRFormer_COCO')
         else:
             raise Exception("Method not implemented")
 
