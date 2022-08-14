@@ -94,8 +94,9 @@ class VideoInfo(dj.Computed):
     num_frames      : int
     """
 
-    def make(self, key):
+    def make(self, key, override=False):
 
+        key = key.copy()
         video, start_time = (Video & key).fetch1("video", "start_time")
 
         cap = cv2.VideoCapture(video)
@@ -105,10 +106,12 @@ class VideoInfo(dj.Computed):
         key["height"] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         key["timestamps"] = [start_time + timedelta(0, i / fps) for i in range(frames)]
         key["delta_time"] = [timedelta(0, i / fps).total_seconds() for i in range(frames)]
-        self.insert1(key)
 
         cap.release()
         os.remove(video)
+
+        self.insert1(key, allow_direct_insert=override)
+
 
     def fetch_timestamps(self):
         assert len(self) == 1, "Restrict to single entity"
