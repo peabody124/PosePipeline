@@ -6,9 +6,9 @@ def find_lifting_keys(filt=None):
     return ((Video - LiftingPerson) & filt).fetch("KEY")
 
 
-def lifting_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="MMpose", lifting_method_name="GastNet"):
+def top_down_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="MMpose"):
     """
-    Run pipeline on a video through to the  lifting layer.
+    Run pipeline on a video through to the top down person layer.
     """
 
     # set up and compute tracking method
@@ -41,6 +41,18 @@ def lifting_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="M
     VideoInfo.populate(key)
     DetectedFrames.populate(key)
     BestDetectedFrames.populate(key)
+
+    return True
+
+
+def lifting_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="MMpose", lifting_method_name="GastNet"):
+    """
+    Run pipeline on a video through to the  lifting layer.
+    """
+
+    res = top_down_pipeline(key, tracking_method_name, top_down_method_name)
+    if not res:
+        return res
 
     if len(TopDownPerson & top_down_key) == 0:
         print(f"Top down job must be reserved and not completed. {top_down_key}")
