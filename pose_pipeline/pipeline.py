@@ -22,7 +22,8 @@ class Video(dj.Manual):
     filename            : varchar(100)
     ---
     video               : attach@localattach    # datajoint managed video file
-    start_time          : timestamp             # time of beginning of video, as accurately as known
+    start_time          : timestamp(3)          # time of beginning of video, as accurately as known
+    import_time  = CURRENT_TIMESTAMP : timestamp
     """
 
     @staticmethod
