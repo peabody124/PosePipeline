@@ -5,6 +5,23 @@ from tqdm import tqdm
 import datajoint as dj
 from pose_pipeline import Video, PersonBbox
 
+mmpose_joint_dictionary = {
+    'MMPoseWholebody': ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear",
+                        "Left Shoulder", "Right Shoulder", "Left Elbow", "Right Elbow",
+                        "Left Wrist", "Right Wrist", "Left Hip", "Right Hip", "Left Knee",
+                        "Right Knee", "Left Ankle", "Right Ankle", "Left Big Toe",
+                        "Left Little Toe", "Left Heel", "Right Big Toe", "Right Little Toe",
+                        "Right Heel"],
+    'MMPoseHalpe': ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear",
+                    "Left Shoulder", "Right Shoulder", "Left Elbow", "Right Elbow",
+                    "Left Wrist", "Right Wrist", "Left Hip", "Right Hip", "Left Knee",
+                    "Right Knee", "Left Ankle", "Right Ankle", "Head", "Neck",
+                    "Pelvis", "Left Big Toe", "Right Big Toe", "Left Little Toe",
+                    "Right Little Toe", "Left Heel", "Right Heel"],
+    'MMPoseCoco': ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear", "Left Shoulder",
+                   "Right Shoulder", "Left Elbow", "Right Elbow", "Left Wrist", "Right Wrist",
+                   "Left Hip", "Right Hip", "Left Knee", "Right Knee", "Left Ankle", "Right Ankle"]
+}
 
 def mmpose_top_down_person(key, method='HRNet_W48_COCO'):
 

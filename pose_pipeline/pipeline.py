@@ -678,26 +678,9 @@ class TopDownPerson(dj.Computed):
         self.insert1(key)
 
     @staticmethod
-    def joint_names():
-        return [
-            "Nose",
-            "Left Eye",
-            "Right Eye",
-            "Left Ear",
-            "Right Ear",
-            "Left Shoulder",
-            "Right Shoulder",
-            "Left Elbow",
-            "Right Elbow",
-            "Left Wrist",
-            "Right Wrist",
-            "Left Hip",
-            "Right Hip",
-            "Left Knee",
-            "Right Knee",
-            "Left Ankle",
-            "Right Ankle",
-        ]
+    def joint_names(method='MMPose'):
+        from .wrappers.mmpose import mmpose_joint_dictionary
+        return mmpose_joint_dictionary[method]
 
 
 @schema
