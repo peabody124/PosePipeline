@@ -54,6 +54,16 @@ def lifting_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="M
     if not res:
         return res
 
+    tracking_key = key.copy()
+    tracking_method = (TrackingBboxMethodLookup & f'tracking_method_name="{tracking_method_name}"').fetch1(
+        "tracking_method"
+    )
+    tracking_key["tracking_method"] = tracking_method
+
+    top_down_key = (PersonBbox & tracking_key).fetch1("KEY")
+    top_down_method = (TopDownMethodLookup & f'top_down_method_name="{top_down_method_name}"').fetch1("top_down_method")
+    top_down_key["top_down_method"] = top_down_method
+
     if len(TopDownPerson & top_down_key) == 0:
         print(f"Top down job must be reserved and not completed. {top_down_key}")
         return False
