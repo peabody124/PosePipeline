@@ -35,6 +35,10 @@ def top_down_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="
     top_down_method = (TopDownMethodLookup & f'top_down_method_name="{top_down_method_name}"').fetch1("top_down_method")
     top_down_key["top_down_method"] = top_down_method
     TopDownMethod.insert1(top_down_key, skip_duplicates=True)
+    if top_down_method_name == "OpenPose":
+        OpenPose.populate(key)
+        OpenPosePerson.populate(key)
+
     TopDownPerson.populate(key, reserve_jobs=True)
 
     # compute some necessary statistics

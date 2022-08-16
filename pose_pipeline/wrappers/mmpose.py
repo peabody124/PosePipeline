@@ -18,7 +18,7 @@ mmpose_joint_dictionary = {
                     "Right Knee", "Left Ankle", "Right Ankle", "Head", "Neck",
                     "Pelvis", "Left Big Toe", "Right Big Toe", "Left Little Toe",
                     "Right Little Toe", "Left Heel", "Right Heel"],
-    'MMPoseCoco': ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear", "Left Shoulder",
+    'MMPose': ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear", "Left Shoulder",
                    "Right Shoulder", "Left Elbow", "Right Elbow", "Left Wrist", "Right Wrist",
                    "Left Hip", "Right Hip", "Left Knee", "Right Knee", "Left Ankle", "Right Ankle"]
 }

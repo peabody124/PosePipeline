@@ -647,6 +647,7 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 1, "top_down_method_name": "MMPoseWholebody"},
         {"top_down_method": 2, "top_down_method_name": "MMPoseHalpe"},
         {"top_down_method": 3, "top_down_method_name": "MMPoseHrformerCoco"},
+        {"top_down_method": 4, "top_down_method_name": "OpenPose"},
     ]
 
 
@@ -680,6 +681,11 @@ class TopDownPerson(dj.Computed):
         elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseHrformerCoco":
             from .wrappers.mmpose import mmpose_top_down_person
             key["keypoints"] = mmpose_top_down_person(key, 'HRFormer_COCO')
+        elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "OpenPose":
+            # Manually copying data over to allow this to be used consistently
+            # but also take advantage of the logic assigning the OpenPose person as a
+            # person of interest
+            key["keypoints"] = (OpenPosePerson & key).fetch1('keypoints')
         else:
             raise Exception("Method not implemented")
 
@@ -687,8 +693,11 @@ class TopDownPerson(dj.Computed):
 
     @staticmethod
     def joint_names(method='MMPose'):
-        from .wrappers.mmpose import mmpose_joint_dictionary
-        return mmpose_joint_dictionary[method]
+        if method == 'OpenPose':
+            return OpenPosePerson.joint_names()
+        else:
+            from .wrappers.mmpose import mmpose_joint_dictionary
+            return mmpose_joint_dictionary[method]
 
 
 @schema
