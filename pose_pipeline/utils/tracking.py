@@ -37,11 +37,11 @@ def detect_qr_code(frame, bounding_box):
     y1 = int(bounding_box[1])
     x2 = int(bounding_box[2])
     y2 = int(bounding_box[3])
-    print("BBOX:", x1, x2, y1, y2)
+    # print("BBOX:", x1, x2, y1, y2)
 
     # Make sure x and y indices are not equal
     if x1 == x2 or y1 == y2:
-        print("Cannot find QR code, Bbox has 0 width or height.")
+        # print("Cannot find QR code, Bbox has 0 width or height.")
         return False
 
     # Check if any values are out of the image bounds
@@ -79,20 +79,26 @@ def detect_qr_code(frame, bounding_box):
     #     return False
     # cropped_frame = frame_copy
 
-    # qrCodeDetector = cv2.QRCodeDetector()
-    # decodedText, points, _ = qrCodeDetector.detectAndDecode(cropped_frame)
-    #
-    # if points is not None:
-    #     points = points[0]
-    #
-    #     # get center of all points
-    #     center = tuple(np.mean(np.array(points),axis=0).astype(int))
-    #
-    #     cv2.circle(cropped_frame,center,50,color=(255,0,0),thickness=2)
-    # cv2.imshow('frame_to_crop', frame_to_crop)
-    cv2.imshow("image_cropped", cropped_frame)
+    qrCodeDetector = cv2.QRCodeDetector()
+    decodedText, points, _ = qrCodeDetector.detectAndDecode(cropped_frame)
 
-    cv2.waitKey(0)
+    if points is not None:
+        points = points[0]
+
+        # get center of all points
+        local_center = np.mean(np.array(points), axis=0).astype(int)
+        global_center = tuple([local_center[0] + x1, local_center[1] + y1])
+        if decodedText != "":
+            print("DECODED:", decodedText)
+        return [decodedText, global_center]
+
+    return False
+
+    # cv2.circle(cropped_frame,center,50,color=(255,0,0),thickness=2)
+    # cv2.imshow('frame_to_crop', frame_to_crop)
+    # cv2.imshow('image_cropped', cropped_frame)
+    #
+    # cv2.waitKey(1)
 
     # if decodedText not in detected_text_list:
     #     detected_text_list.append(decodedText)
