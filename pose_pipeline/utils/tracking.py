@@ -24,8 +24,9 @@ def annotate_single_person(filt, subject_id=0, confirm=False):
 def detect_qr_code(frame, bounding_box):
 
     frame_copy = frame.copy()
+    # Getting shape of input image
     h, w, d = frame_copy.shape
-    # print("frame shape",h,w,d)
+
     # Check if any values are negative (cannot find QR code using those indices)
     negative_indices = np.any(bounding_box < 0)
 
@@ -33,11 +34,11 @@ def detect_qr_code(frame, bounding_box):
         # print("Cannot find QR code, negative Bbox indices present.")
         return False
 
+    # Extracting bounding box coordinates
     x1 = int(bounding_box[0])
     y1 = int(bounding_box[1])
     x2 = int(bounding_box[2])
     y2 = int(bounding_box[3])
-    # print("BBOX:", x1, x2, y1, y2)
 
     # Make sure x and y indices are not equal
     if x1 == x2 or y1 == y2:
@@ -60,24 +61,8 @@ def detect_qr_code(frame, bounding_box):
         # print("Swapping y indices")
         y2, y1 = y1, y2
 
-    # w = x2 - x1
-    # h = y2 - y1
-    # cv2.rectangle(frame_copy, (x1, y1), (x2, y2), (0,255,0), 2)
-    # print(x1,x2,y1,y2)
-
-    # if x1 < 0 or x2 < 0
-    # print("######################################")
-    # print(frame_copy.shape)
-    # print(f'CROPPING [{y1}:{y2},{x1}:{x2}]')
     frame_to_crop = frame_copy.copy()
     cropped_frame = frame_to_crop[y1:y2, x1:x2].copy()
-    # print(x1,x2,y1,y2,w,h,h*w)
-    # print("CROPPED: ",cropped_frame.shape)
-    # print("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
-    # if w == 0 or h == 0:
-    #     print(x1,x2,y1,y2,w,h,h*w)
-    #     return False
-    # cropped_frame = frame_copy
 
     qrCodeDetector = cv2.QRCodeDetector()
     decodedText, points, _ = qrCodeDetector.detectAndDecode(cropped_frame)
@@ -93,16 +78,3 @@ def detect_qr_code(frame, bounding_box):
         return [decodedText, global_center]
 
     return False
-
-    # cv2.circle(cropped_frame,center,50,color=(255,0,0),thickness=2)
-    # cv2.imshow('frame_to_crop', frame_to_crop)
-    # cv2.imshow('image_cropped', cropped_frame)
-    #
-    # cv2.waitKey(1)
-
-    # if decodedText not in detected_text_list:
-    #     detected_text_list.append(decodedText)
-    # QR_detected_count += 1
-    #
-    # if decodedText != '':
-    #     decoded_count += 1"
