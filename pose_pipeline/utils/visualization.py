@@ -76,12 +76,12 @@ def video_overlay(
         shutil.move(temp, output_name)
 
 
-def draw_keypoints(image, keypoints, radius=10, threshold=0.2, color=(255, 255, 255)):
+def draw_keypoints(image, keypoints, radius=10, threshold=0.2, color=(255, 255, 255), border_color=(0, 0, 0)):
     """Draw the keypoints on an image"""
     image = image.copy()
     for i in range(keypoints.shape[0]):
         if keypoints[i, -1] > threshold:
-            cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius, (0, 0, 0), -1)
+            cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius, border_color, -1)
             if radius > 2:
                 cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius - 2, color, -1)
     return image

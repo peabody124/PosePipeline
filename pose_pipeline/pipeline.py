@@ -27,7 +27,8 @@ class Video(dj.Manual):
     filename            : varchar(100)
     ---
     video               : attach@localattach    # datajoint managed video file
-    start_time          : timestamp             # time of beginning of video, as accurately as known
+    start_time          : timestamp(3)          # time of beginning of video, as accurately as known
+    import_time  = CURRENT_TIMESTAMP : timestamp
     """
 
     @staticmethod
@@ -98,8 +99,9 @@ class VideoInfo(dj.Computed):
     num_frames      : int
     """
 
-    def make(self, key):
+    def make(self, key, override=False):
 
+        key = key.copy()
         video, start_time = (Video & key).fetch1("video", "start_time")
 
         cap = cv2.VideoCapture(video)
@@ -109,10 +111,12 @@ class VideoInfo(dj.Computed):
         key["height"] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         key["timestamps"] = [start_time + timedelta(0, i / fps) for i in range(frames)]
         key["delta_time"] = [timedelta(0, i / fps).total_seconds() for i in range(frames)]
-        self.insert1(key)
 
         cap.release()
         os.remove(video)
+
+        self.insert1(key, allow_direct_insert=override)
+
 
     def fetch_timestamps(self):
         assert len(self) == 1, "Restrict to single entity"
@@ -560,6 +564,36 @@ class OpenPosePerson(dj.Computed):
 
         self.insert1(key)
 
+    @staticmethod
+    def joint_names():
+        return [
+            "Nose",
+            "Sternum",
+            "Right Shoulder",
+            "Right Elbow",
+            "Right Wrist",
+            "Left Shoulder",
+            "Left Elbow",
+            "Left Wrist",
+            "Pelvis",
+            "Right Hip",
+            "Right Knee",
+            "Right Ankle",
+            "Left Hip",
+            "Left Knee",
+            "Left Ankle",
+            "Right Eye",
+            "Left Eye",
+            "Right Ear",
+            "Left Ear",
+            "Left Big Toe",
+            "Left Little Toe",
+            "Left Heel",
+            "Right Big Toe",
+            "Right Little Toe",
+            "Right Heel"
+        ]
+
 
 @schema
 class OpenPosePersonVideo(dj.Computed):
@@ -611,6 +645,8 @@ class TopDownMethodLookup(dj.Lookup):
     contents = [
         {"top_down_method": 0, "top_down_method_name": "MMPose"},
         {"top_down_method": 1, "top_down_method_name": "MMPoseWholebody"},
+        {"top_down_method": 2, "top_down_method_name": "MMPoseHalpe"},
+        {"top_down_method": 3, "top_down_method_name": "MMPoseHrformerCoco"},
     ]
 
 
@@ -634,38 +670,25 @@ class TopDownPerson(dj.Computed):
 
         if (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPose":
             from .wrappers.mmpose import mmpose_top_down_person
-
-            key["keypoints"] = mmpose_top_down_person(key)
+            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_COCO')
         elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseWholebody":
-            from .wrappers.mmpose import mmpose_whole_body
-
-            key["keypoints"] = mmpose_whole_body(key)
+            from .wrappers.mmpose import mmpose_top_down_person
+            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_COCOWholeBody')
+        elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseHalpe":
+            from .wrappers.mmpose import mmpose_top_down_person
+            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_HALPE')
+        elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseHrformerCoco":
+            from .wrappers.mmpose import mmpose_top_down_person
+            key["keypoints"] = mmpose_top_down_person(key, 'HRFormer_COCO')
         else:
             raise Exception("Method not implemented")
 
         self.insert1(key)
 
     @staticmethod
-    def joint_names():
-        return [
-            "Nose",
-            "Left Eye",
-            "Right Eye",
-            "Left Ear",
-            "Right Ear",
-            "Left Shoulder",
-            "Right Shoulder",
-            "Left Elbow",
-            "Right Elbow",
-            "Left Wrist",
-            "Right Wrist",
-            "Left Hip",
-            "Right Hip",
-            "Left Knee",
-            "Right Knee",
-            "Left Ankle",
-            "Right Ankle",
-        ]
+    def joint_names(method='MMPose'):
+        from .wrappers.mmpose import mmpose_joint_dictionary
+        return mmpose_joint_dictionary[method]
 
 
 @schema
