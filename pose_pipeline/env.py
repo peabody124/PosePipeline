@@ -1,10 +1,11 @@
 import os
 import sys
-import logging
+import datajoint as dj
 from .utils.paths import find_full_path
 from .paths import get_pose_root_package_dir
 
-logger = logging.getLogger("datajoint")
+logger = dj.logger
+
 
 dependencies = {
     "OpenPose": {
@@ -18,7 +19,7 @@ dependencies = {
         "git_repo": "CMU-Perceptual-Computing-Lab/openpose",
     },
     "Expose": {"rel_path": "expose", "env_var": "EXPOSE_PATH", "git_repo": "Jack000/Expose"},
-    "CenterHMR": {  # Since renamed ROMP? Issues
+    "CenterHMR": {  # Since renamed ROMP? Issues?
         "rel_path": "CenterHMR",
         "env_var": "CENTERHMR_PATH",
         "git_repo": "Arthur151/ROMP",
