@@ -26,11 +26,6 @@
             "This is where PosePipeline and non-installable other git ",
             "repos are located (e.g., FairMOT, PoseAug, etc.)"
         ],
-        "pose_project_dir": "/home/jcotton/projects/pose/", 
-        "pose_root_data_dir":
-            [
-            "/home/jcotton/projects/pose/",
-            "/home/jcotton/projects/alt/"
-            ]
+        "pose_project_dir": "/home/jcotton/projects/pose/"
     }
 }
