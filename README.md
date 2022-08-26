@@ -8,3 +8,23 @@ PosePipe is a human pose estimation (HPE) pipeline to facilitate home movement a
 
 - Follow the [Installation instructions](INSTALL.md) to install PosePipe and launch a DataJoint MySQL database.
 - Use the [Getting Started Notebook](doc/Getting%20Started.ipynb) to test the pipeline
+
+
+## Developers
+
+VSCode is recommended. The following can be included in your `settings.json` to specify `black` formatting settings.
+
+```json
+{
+    "python.formatting.blackArgs": [
+        "--line-length=120",
+        "--include='*py'",
+        "--exclude='*ipynb'",
+        "--extend-exclude='.env'",
+        "--extend-exclude='3rdparty/*'"
+    ],
+    "editor.rulers": [
+        120
+    ]
+}
+```

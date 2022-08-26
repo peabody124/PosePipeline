@@ -14,17 +14,23 @@
     "fetch_format": "array",
     "loglevel": "INFO",
     "safemode": true,
+    "stores": {
+        "localattach": {
+              "protocol": "file",
+              "location": "/mnt/data0/clinical_data/datajoint_external"
+        }
+    },
     "custom": {
-               "database.prefix": "",
-               "pose_root_package_dir":
-                   [
-                    "/home/jcotton/projects/pose/",
-                    ""
-                   ],
-                "pose_root_data_dir":
-                   [
-                    "/home/jcotton/projects/pose/",
-                    "/home/jcotton/projects/alt/"
-                   ]
-               }
+        "database.prefix": "",
+        "pose_project_dir_comment": [
+            "This is where PosePipeline and non-installable other git ",
+            "repos are located (e.g., FairMOT, PoseAug, etc.)"
+        ],
+        "pose_project_dir": "/home/jcotton/projects/pose/", 
+        "pose_root_data_dir":
+            [
+            "/home/jcotton/projects/pose/",
+            "/home/jcotton/projects/alt/"
+            ]
+    }
 }
