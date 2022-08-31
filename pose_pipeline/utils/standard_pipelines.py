@@ -39,7 +39,7 @@ def top_down_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="
         OpenPose.populate(key)
         OpenPosePerson.populate(key)
 
-    TopDownPerson.populate(key, reserve_jobs=True)
+    TopDownPerson.populate(top_down_key, reserve_jobs=True)
 
     # compute some necessary statistics
     VideoInfo.populate(key)
