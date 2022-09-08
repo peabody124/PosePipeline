@@ -61,8 +61,7 @@ def detect_qr_code(frame, bounding_box):
         # print("Swapping y indices")
         y2, y1 = y1, y2
 
-    frame_to_crop = frame_copy.copy()
-    cropped_frame = frame_to_crop[y1:y2, x1:x2].copy()
+    cropped_frame = frame_copy[y1:y2, x1:x2].copy()
 
     qrCodeDetector = cv2.QRCodeDetector()
     decodedText, points, _ = qrCodeDetector.detectAndDecode(cropped_frame)
@@ -70,8 +69,9 @@ def detect_qr_code(frame, bounding_box):
     if points is not None:
         points = points[0]
 
-        # get center of all points
+        # get center of all points returned from QR detection
         local_center = np.mean(np.array(points), axis=0).astype(int)
+        # adjust the center to be relative to the overall image rather than the cropped image
         global_center = tuple([local_center[0] + x1, local_center[1] + y1])
         if decodedText != "":
             print("DECODED:", decodedText)
