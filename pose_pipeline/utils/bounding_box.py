@@ -34,7 +34,7 @@ def crop_image_bbox(image, bbox, target_size=(288, 384), dilate=1.2):
 
     Args:
         image (np.array): uses HWC format
-        bbox (4,): bounding box, will contain at least this area
+        bbox (4,): TLHW format bounding box, will contain at least this area
         target_size (optional): image size to produce
         dilate: additional dilation on the bounding box
 
@@ -123,6 +123,7 @@ def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224, sca
 
         # handle the case where person is not tracked in frame
         if not present:
+            ret, frame = cap.read()
             print("Skip missing frame")
             continue
 
@@ -132,7 +133,10 @@ def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224, sca
 
         img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        norm_img, bbox = crop_image_bbox(img, bbox, target_size=(crop_size, crop_size), dilate=scale)
+        if len(crop_size) == 1:
+            crop_size = (crop_size, crop_size)
+
+        norm_img, bbox = crop_image_bbox(img, bbox, target_size=crop_size, dilate=scale)
         norm_img = transform(norm_img)
 
         # print(norm_img.shape)
@@ -140,6 +144,9 @@ def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224, sca
         frames.append(norm_img)
         bboxes.append(bbox)
         frame_ids.append(idx)
+
+    cap.release()
+    os.remove(video)
 
     class Inference(Dataset):
         def __init__(self, frames, bboxes=None, joints2d=None):
