@@ -133,7 +133,7 @@ def get_person_dataloader(key, batch_size=32, num_workers=16, crop_size=224, sca
 
         img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        if len(crop_size) == 1:
+        if type(crop_size) == int or len(crop_size) == 1:
             crop_size = (crop_size, crop_size)
 
         norm_img, bbox = crop_image_bbox(img, bbox, target_size=crop_size, dilate=scale)
