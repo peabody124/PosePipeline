@@ -946,6 +946,7 @@ class SMPLMethodLookup(dj.Lookup):
         {"smpl_method": 4, "smpl_method_name": "PARE"},
         {"smpl_method": 5, "smpl_method_name": "PIXIE"},
         {"smpl_method": 6, "smpl_method_name": "ProHMR_MMPose"},
+        {"smpl_method": 7, "smpl_method_name": "HybrIK"},
     ]
 
 
@@ -1023,6 +1024,13 @@ class SMPLPerson(dj.Computed):
             res = process_pixie(key)
             res["model_type"] = "SMPL-X"
 
+        elif smpl_method_name == "HybrIK":
+
+            from .wrappers.hybrik import process_hybrik
+
+            res = process_hybrik(key)
+            res['model_type'] = 'SMPL'
+
         else:
             raise Exception(f"Method {smpl_method_name} not implemented")
 
@@ -1094,6 +1102,12 @@ class SMPLPersonVideo(dj.Computed):
             from .wrappers.pixie import get_pixie_callback
 
             callback = get_pixie_callback(key)
+
+        elif smpl_method_name == "HybrIK":
+            from .wrappers.hybrik import get_hybrik_smpl_callback
+
+            callback = get_hybrik_smpl_callback(key)
+
         else:
             from pose_pipeline.utils.visualization import get_smpl_callback
 
