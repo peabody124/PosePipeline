@@ -26,6 +26,48 @@ def concatenate_dict(accumulator, new_data):
     return accumulator
 
 
+def finalize_dict(accumulator, accumulated_frames, num_frames):
+
+    frame_ids = np.arange(num_frames)
+    found_ids = np.isin(frame_ids, accumulated_frames)
+
+    clean_dict = {}
+    for k in accumulator.keys():
+        if type(accumulator[k]) == dict:
+            clean_dict[k] = finalize_dict(accumulator[k], accumulated_frames, num_frames)
+        else:
+            clean_dict[k] = np.zeros((num_frames, *accumulator[k].shape[1:])) * np.nan
+            clean_dict[k][found_ids] = accumulator[k]
+
+    return clean_dict
+
+
+def load_hybrik():
+
+    # hacky but required for now
+    wd = os.getcwd()
+
+    os.chdir(os.environ["HYBRIDIK_PATH"])
+
+    with add_path(os.environ["HYBRIDIK_PATH"]):
+        from hybrik.models import builder
+        from hybrik.utils.config import update_config
+
+        cfg = update_config(config)
+        hybrik_model = builder.build_sppe(cfg.MODEL)
+
+    save_dict = torch.load(pretrained_weights, map_location='cpu')
+    if type(save_dict) == dict:
+        model_dict = save_dict['model']
+        hybrik_model.load_state_dict(model_dict)
+    else:
+        hybrik_model.load_state_dict(save_dict)
+
+    os.chdir(wd)
+
+    return hybrik_model
+
+
 def process_batch(images, bboxes_tlhw, centers, hybrik_model, device='cuda'):
     from hybrik.models.layers.smpl.lbs import rotmat_to_quat, hybrik as hybrik_compute_smpl
 
@@ -85,31 +127,6 @@ def process_batch(images, bboxes_tlhw, centers, hybrik_model, device='cuda'):
     return wrapper_entry, res
 
 
-def load_hybrik():
-
-    # hacky but required for now
-    wd = os.getcwd()
-
-    os.chdir(os.environ["HYBRIDIK_PATH"])
-
-    with add_path(os.environ["HYBRIDIK_PATH"]):
-        from hybrik.models import builder
-        from hybrik.utils.config import update_config
-
-        cfg = update_config(config)
-        hybrik_model = builder.build_sppe(cfg.MODEL)
-
-    save_dict = torch.load(pretrained_weights, map_location='cpu')
-    if type(save_dict) == dict:
-        model_dict = save_dict['model']
-        hybrik_model.load_state_dict(model_dict)
-    else:
-        hybrik_model.load_state_dict(save_dict)
-
-    os.chdir(wd)
-
-    return hybrik_model
-
 def process_hybrik(key):
 
     frame_ids, dataloader, bboxes = get_person_dataloader(key, crop_size=(256, 256))
@@ -117,7 +134,7 @@ def process_hybrik(key):
     hybrik_model = load_hybrik()
     hybrik_model.to('cuda');
 
-    height, width = (VideoInfo & key).fetch1('height', 'width')
+    num_frames, height, width = (VideoInfo & key).fetch1('num_frames', 'height', 'width')
 
     idx = 0
     entry, all_res = {}, {}
@@ -134,6 +151,9 @@ def process_hybrik(key):
         for k in res.keys():
             res[k] = res[k].detach().cpu().numpy()
         all_res = concatenate_dict(all_res, res)
+
+    # ensure any frames we skip exist in the final data
+    entry = finalize_dict(entry, frame_ids, num_frames)
 
     entry.update(key)
 
@@ -166,6 +186,9 @@ def get_hybrik_smpl_callback(key, device='cuda'):
         return torch.Tensor(x.copy()).to(device)
 
     def overlay(image, idx):
+
+        if np.any(np.isnan(joints3d[idx])):
+            return image
 
         with torch.no_grad():
             output = hybrik_model.smpl.hybrik(
