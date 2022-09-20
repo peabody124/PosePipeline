@@ -6,18 +6,19 @@ import os
 from pose_pipeline import Video
 
 
-def blur_faces(key, downsample=8):
+def blur_faces(key, downsample=2):
 
     from tqdm import trange
     from facenet_pytorch import MTCNN
     from pose_pipeline.utils.visualization import video_overlay
 
     mtcnn = MTCNN(
-        image_size=240,
+        image_size=160,
         margin=20,
-        min_face_size=35,
+        min_face_size=35 // downsample,
         thresholds=[0.4, 0.5, 0.5],
         factor=0.709,
+        keep_all=True,
         device="cuda:0",
     )
 
