@@ -47,7 +47,8 @@ def mmpose_top_down_person(key, method='HRNet_W48_COCO'):
         pose_ckpt = os.path.join(MODEL_DATA_DIR, 'mmpose/checkpoints/hrnet_w48_halpe_384x288_dark.pth')
         num_keypoints = 136
     bboxes = (PersonBbox & key).fetch1("bbox")
-    cap = Video.get_robust_reader(key)
+    video =  Video.get_robust_reader(key, return_cap=False) # returning video allows deleting it
+    cap = Video.get_robust_reader(video)
 
     model = init_pose_model(pose_cfg, pose_ckpt)
 
@@ -69,6 +70,8 @@ def mmpose_top_down_person(key, method='HRNet_W48_COCO'):
 
         res = inference_top_down_pose_model(model, frame, [bbox_wrap])[0]
         results.append(res[0]["keypoints"])
+
+    os.remove(video)
 
     return np.asarray(results)
 
