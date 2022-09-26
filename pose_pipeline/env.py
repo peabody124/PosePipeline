@@ -27,29 +27,37 @@ class add_path:
             pass
 
 
-def set_environmental_variables():
-    """For dependency listed below, checks that path exists and sets env variable."""
-    POSE_PROJ_DIR = get_pose_project_dir()
+def set_environmental_variables(pose_project_dir=None):
+    """For dependency listed below, checks that path exists and sets env variable.
+
+    Parameters
+    ----------
+    pose_project_dir: Optional string indicating root directory for all dependencies (e.g., OpenPose)
+                      If None, uses path specified in dj.config['custom']['pose_project_dir']
+    """
+    if not pose_project_dir:
+        pose_project_dir = get_pose_project_dir() # Uses paths.py
+    assert Path(pose_project_dir).is_dir(), f"Could not find pose project directory: {pose_project_dir}"
     env_paths = {
-        "OPENPOSE_PATH": f"{POSE_PROJ_DIR}openpose",
-        "OPENPOSE_PYTHON_PATH": f"{POSE_PROJ_DIR}openpose/python",  # removed build/python
-        "EXPOSE_PATH": f"{POSE_PROJ_DIR}expose",
-        "CENTERHMR_PATH": f"{POSE_PROJ_DIR}CenterHMR",
-        "GAST_PATH": f"{POSE_PROJ_DIR}GAST-Net-3DPoseEstimation",
-        "POSEFORMER_PATH": f"{POSE_PROJ_DIR}PoseFormer",
-        "VIBE_PATH": f"{POSE_PROJ_DIR}VIBE",
-        "MEVA_PATH": f"{POSE_PROJ_DIR}MEVA",
-        "PARE_PATH": f"{POSE_PROJ_DIR}PARE",
-        "PIXIE_PATH": f"{POSE_PROJ_DIR}PIXIE",
-        "HUMOR_PATH": f"{POSE_PROJ_DIR}humor/humor",
-        "FAIRMOT_PATH": f"{POSE_PROJ_DIR}FairMOT/src/lib",
-        "DCNv2_PATH": f"{POSE_PROJ_DIR}DCNv2/DCN",
-        "TRANSTRACK_PATH": f"{POSE_PROJ_DIR}TransTrack",
-        "PROHMR_PATH": f"{POSE_PROJ_DIR}ProHMR",
-        "TRADES_PATH": f"{POSE_PROJ_DIR}TraDeS/src/lib",
-        "RIE_PATH": f"{POSE_PROJ_DIR}Pose3D-RIE",
-        "VIDEOPOSE3D_PATH": f"{POSE_PROJ_DIR}VideoPose3D",
-        "POSEAUG_PATH": f"{POSE_PROJ_DIR}PoseAug",
+        "OPENPOSE_PATH": f"{pose_project_dir}openpose",
+        "OPENPOSE_PYTHON_PATH": f"{pose_project_dir}openpose/python",  # removed build/python, not in current repo
+        "EXPOSE_PATH": f"{pose_project_dir}expose",
+        "CENTERHMR_PATH": f"{pose_project_dir}CenterHMR",
+        "GAST_PATH": f"{pose_project_dir}GAST-Net-3DPoseEstimation",
+        "POSEFORMER_PATH": f"{pose_project_dir}PoseFormer",
+        "VIBE_PATH": f"{pose_project_dir}VIBE",
+        "MEVA_PATH": f"{pose_project_dir}MEVA",
+        "PARE_PATH": f"{pose_project_dir}PARE",
+        "PIXIE_PATH": f"{pose_project_dir}PIXIE",
+        "HUMOR_PATH": f"{pose_project_dir}humor/humor",
+        "FAIRMOT_PATH": f"{pose_project_dir}FairMOT/src/lib",
+        "DCNv2_PATH": f"{pose_project_dir}DCNv2/DCN",
+        "TRANSTRACK_PATH": f"{pose_project_dir}TransTrack",
+        "PROHMR_PATH": f"{pose_project_dir}ProHMR",
+        "TRADES_PATH": f"{pose_project_dir}TraDeS/src/lib",
+        "RIE_PATH": f"{pose_project_dir}Pose3D-RIE",
+        "VIDEOPOSE3D_PATH": f"{pose_project_dir}VideoPose3D",
+        "POSEAUG_PATH": f"{pose_project_dir}PoseAug",
     }
     for var, path in env_paths.items():
         assert Path(path).exists(), f"Could not find path {path}"
