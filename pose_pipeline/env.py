@@ -2,11 +2,8 @@ import os
 import sys
 import datajoint as dj
 from pathlib import Path
-from dotenv import load_dotenv
 from .utils.paths import find_full_path
 from .paths import get_pose_project_dir
-
-logger = dj.logger
 
 
 class add_path:
@@ -32,8 +29,31 @@ class add_path:
 
 def set_environmental_variables():
     """For dependency listed below, checks that path exists and sets env variable."""
-    os.environ["POSE_PROJ_DIR"] = get_pose_project_dir()
-    load_dotenv()
+    POSE_PROJ_DIR = get_pose_project_dir()
+    env_paths = {
+        "OPENPOSE_PATH": f"{POSE_PROJ_DIR}openpose",
+        "OPENPOSE_PYTHON_PATH": f"{POSE_PROJ_DIR}openpose/python",  # removed build/python
+        "EXPOSE_PATH": f"{POSE_PROJ_DIR}expose",
+        "CENTERHMR_PATH": f"{POSE_PROJ_DIR}CenterHMR",
+        "GAST_PATH": f"{POSE_PROJ_DIR}GAST-Net-3DPoseEstimation",
+        "POSEFORMER_PATH": f"{POSE_PROJ_DIR}PoseFormer",
+        "VIBE_PATH": f"{POSE_PROJ_DIR}VIBE",
+        "MEVA_PATH": f"{POSE_PROJ_DIR}MEVA",
+        "PARE_PATH": f"{POSE_PROJ_DIR}PARE",
+        "PIXIE_PATH": f"{POSE_PROJ_DIR}PIXIE",
+        "HUMOR_PATH": f"{POSE_PROJ_DIR}humor/humor",
+        "FAIRMOT_PATH": f"{POSE_PROJ_DIR}FairMOT/src/lib",
+        "DCNv2_PATH": f"{POSE_PROJ_DIR}DCNv2/DCN",
+        "TRANSTRACK_PATH": f"{POSE_PROJ_DIR}TransTrack",
+        "PROHMR_PATH": f"{POSE_PROJ_DIR}ProHMR",
+        "TRADES_PATH": f"{POSE_PROJ_DIR}TraDeS/src/lib",
+        "RIE_PATH": f"{POSE_PROJ_DIR}Pose3D-RIE",
+        "VIDEOPOSE3D_PATH": f"{POSE_PROJ_DIR}VideoPose3D",
+        "POSEAUG_PATH": f"{POSE_PROJ_DIR}PoseAug",
+    }
+    for var, path in env_paths.items():
+        assert Path(path).exists(), f"Could not find path {path}"
+        os.environ[var] = path
 
     import platform
 
@@ -45,7 +65,9 @@ def set_environmental_variables():
 def download_git_dependencies():
     """Download git dependency non-packages to pose project dir"""
     req_path = get_pose_project_dir() + "PosePipeline/requirements.txt"
-    assert Path(req_path).exists(), "Could not find requirements.txt with git repos listed."
+    assert Path(
+        req_path
+    ).exists(), "Could not find requirements.txt with git repos listed."
     with open(req_path) as f:
         git_repos = f.read().split("\n# git+")[1:]
 
