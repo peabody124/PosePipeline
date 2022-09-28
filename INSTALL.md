@@ -15,7 +15,8 @@ cd datajoint_docker
 docker-compose up -d
 ```
 
-3. When running code, make sure to configure repository for where video stores will be kept. This can also be saved to the DataJoint configuration.
+3. When running code, make sure to configure repository for where video stores will be kept. This can also be saved to 
+   the DataJoint configuration.
 
 ```
 dj.config['stores'] = {
@@ -26,7 +27,8 @@ dj.config['stores'] = {
 }
 ```
 
-4. Set the environment variables found in `pose_pipeline.env` based on the local installation. Follow the specific installations instructions for each one and also store the necessary network weights in the 3rdparty directory.
+4. Set the environment variables found in `pose_pipeline.env` based on the local installation. Follow the specific 
+   installations instructions for each one and also store the necessary network weights in the 3rdparty directory.
 
 MMPose files:
 ```
