@@ -198,6 +198,40 @@ class OpenPose(dj.Computed):
 
 
 @schema
+class OpenPoseVideo(dj.Computed):
+    definition = """
+    -> OpenPose
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    """
+
+    def make(self, key):
+
+        from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
+
+        video = (BlurredVideo & key).fetch1("output_video")
+        keypoints = (OpenPose & key).fetch1("keypoints")
+
+        def overlay_fn(image, idx):
+            if keypoints[idx] is None:
+                return image
+            for person_idx in range(keypoints[idx].shape[0]):
+                image = draw_keypoints(image, keypoints[idx][person_idx])
+            return image
+
+        fd, out_file_name = tempfile.mkstemp(suffix=".mp4")
+        os.close(fd)
+        video_overlay(video, out_file_name, overlay_fn, downsample=1)
+
+        key["output_video"] = out_file_name
+
+        self.insert1(key)
+
+        os.remove(out_file_name)
+        os.remove(video)
+
+
+@schema
 class BlurredVideo(dj.Computed):
     definition = """
     -> Video
