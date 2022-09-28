@@ -7,7 +7,7 @@ pyrender>=0.1.45
 mmcv-full
 mmdet
 mmtrack
-mmpose
+mmpose # while installable, mmpose_bottom_up expects checkpoints in project_dir
 python-dotenv
 GitPython
 
@@ -26,7 +26,8 @@ GitPython
 # git+https://github.com/CharlesShang/DCNv2
 # git+https://github.com/PeizeSun/TransTrack
 # git+https://github.com/nkolot/ProHMR
-# git+https://github.com/yaodongyu/TRADES
+# git+https://github.com/JialianW/TraDeS
 # git+https://github.com/paTRICK-swk/Pose3D-RIE
 # git+https://github.com/facebookresearch/VideoPose3D
 # git+https://github.com/jfzhang95/PoseAug
+# git+https://github.com/open-mmlab/mmpose

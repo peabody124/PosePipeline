@@ -36,13 +36,13 @@ def set_environmental_variables(pose_project_dir=None):
                       If None, uses path specified in dj.config['custom']['pose_project_dir']
     """
     if not pose_project_dir:
-        pose_project_dir = get_pose_project_dir() # Uses paths.py
+        pose_project_dir = get_pose_project_dir()  # Uses paths.py
     assert Path(pose_project_dir).is_dir(), f"Could not find pose project directory: {pose_project_dir}"
     env_paths = {
         "OPENPOSE_PATH": f"{pose_project_dir}openpose",
         "OPENPOSE_PYTHON_PATH": f"{pose_project_dir}openpose/python",  # removed build/python, not in current repo
         "EXPOSE_PATH": f"{pose_project_dir}expose",
-        "CENTERHMR_PATH": f"{pose_project_dir}CenterHMR",
+        "CENTERHMR_PATH": f"{pose_project_dir}ProHMR",
         "GAST_PATH": f"{pose_project_dir}GAST-Net-3DPoseEstimation",
         "POSEFORMER_PATH": f"{pose_project_dir}PoseFormer",
         "VIBE_PATH": f"{pose_project_dir}VIBE",
@@ -51,7 +51,7 @@ def set_environmental_variables(pose_project_dir=None):
         "PIXIE_PATH": f"{pose_project_dir}PIXIE",
         "HUMOR_PATH": f"{pose_project_dir}humor/humor",
         "FAIRMOT_PATH": f"{pose_project_dir}FairMOT/src/lib",
-        "DCNv2_PATH": f"{pose_project_dir}DCNv2/DCN",
+        "DCNv2_PATH": f"{pose_project_dir}DCNv2/src",
         "TRANSTRACK_PATH": f"{pose_project_dir}TransTrack",
         "PROHMR_PATH": f"{pose_project_dir}ProHMR",
         "TRADES_PATH": f"{pose_project_dir}TraDeS/src/lib",

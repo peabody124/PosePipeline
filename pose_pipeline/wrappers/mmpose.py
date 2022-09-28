@@ -70,6 +70,7 @@ def mmpose_top_down_person(key, method='HRNet_W48_COCO'):
 
 
 def mmpose_bottom_up(key):
+    from ..paths import get_pose_project_dir
 
     from mmpose.apis import init_pose_model, inference_bottom_up_pose_model
     from tqdm import tqdm
@@ -79,7 +80,7 @@ def mmpose_bottom_up(key):
     pose_cfg = os.path.join(MODEL_DATA_DIR, "mmpose/config/bottom_up/higherhrnet/coco/higher_hrnet48_coco_512x512.py")
     pose_ckpt = os.path.join(MODEL_DATA_DIR, "mmpose/checkpoints/higher_hrnet48_coco_512x512-60fedcbc_20200712.pth")
 
-    pose_cfg = "/home/jcotton/projects/pose/mmpose/configs/body/2d_kpt_sview_rgb_img/associative_embedding/coco/mobilenetv2_coco_512x512.py"
+    pose_cfg = f"{get_pose_project_dir()}/mmpose/configs/body/2d_kpt_sview_rgb_img/associative_embedding/coco/mobilenetv2_coco_512x512.py"
     pose_ckpt = os.path.join(MODEL_DATA_DIR, "mmpose/checkpoints/mobilenetv2_coco_512x512-4d96e309_20200816.pth")
 
     model = init_pose_model(pose_cfg, pose_ckpt)

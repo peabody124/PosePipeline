@@ -1,0 +1,28 @@
+name: pse
+channels:
+  - apple # if clang not found even after install, try xcodebuild -runFirstLaunch
+  - conda-forge
+  - defaults
+dependencies:
+  - tensorflow-deps
+  - opencv
+  - python=3.9
+  - pip>=19.0 
+  - python.app
+  - ipython
+  - ipykernel
+  - jupyter
+  - pip:
+    - tensorflow-macos
+    - tensorflow-metal
+    - datajoint
+    - matplotlib
+    - numpy
+    - pyrender>=0.1.45
+    - mmcv-full
+    - mmdet
+    - mmtrack
+    - mmpose
+    - python-dotenv
+    - GitPython
+    - -e .. # pose pipe

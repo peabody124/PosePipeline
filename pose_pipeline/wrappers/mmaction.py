@@ -13,6 +13,7 @@ def mmaction_skeleton_action_person(key, device="cuda", stride=1):
     from mmcv.runner import load_checkpoint
     from mmaction.datasets.pipelines import Compose
     from mmaction.models import build_detector, build_model, build_recognizer
+    from ..paths import get_pose_project_dir
 
     # fetch data
     keypoints = (TopDownPerson & key).fetch1("keypoints")
@@ -20,10 +21,10 @@ def mmaction_skeleton_action_person(key, device="cuda", stride=1):
 
     # prepare action recognition model
     skeleton_config_file = (
-        "/home/jcotton/projects/pose/mmaction2/configs/skeleton/posec3d/slowonly_r50_u48_240e_ntu120_xsub_keypoint.py"
+        f"{get_pose_project_dir()}/mmaction2/configs/skeleton/posec3d/slowonly_r50_u48_240e_ntu120_xsub_keypoint.py"
     )
     skeleton_stdet_checkpoint = "https://download.openmmlab.com/mmaction/skeleton/posec3d/posec3d_ava.pth"
-    label_map = "/home/jcotton/projects/pose/mmaction2/tools/data/ava/label_map.txt"
+    label_map = f"{get_pose_project_dir()}/mmaction2/tools/data/ava/label_map.txt"
 
     def load_label_map(file_path):
         """Load Label Map.
