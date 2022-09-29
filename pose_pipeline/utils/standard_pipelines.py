@@ -35,12 +35,16 @@ def top_down_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="
     top_down_method = (TopDownMethodLookup & f'top_down_method_name="{top_down_method_name}"').fetch1("top_down_method")
     top_down_key["top_down_method"] = top_down_method
     TopDownMethod.insert1(top_down_key, skip_duplicates=True)
-    TopDownPerson.populate(key, reserve_jobs=True)
+    if top_down_method_name == "OpenPose":
+        OpenPose.populate(key)
+        OpenPosePerson.populate(key)
+
+    TopDownPerson.populate(top_down_key, reserve_jobs=True)
 
     # compute some necessary statistics
-    VideoInfo.populate(key)
-    DetectedFrames.populate(key)
-    BestDetectedFrames.populate(key)
+    VideoInfo.populate(key, reserve_jobs=True)
+    DetectedFrames.populate(key, reserve_jobs=True)
+    BestDetectedFrames.populate(key, reserve_jobs=True)
 
     return True
 
@@ -78,5 +82,10 @@ def lifting_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="M
     if len(LiftingPerson & lifting_key) == 0:
         print(f"Lifting job must be reserved and not completed. {lifting_key}")
         return False
+
+    # compute some necessary statistics
+    VideoInfo.populate(key, reserve_jobs=True)
+    DetectedFrames.populate(key, reserve_jobs=True)
+    BestDetectedFrames.populate(key, reserve_jobs=True)
 
     return len(LiftingPerson & key) > 0

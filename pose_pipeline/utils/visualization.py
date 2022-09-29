@@ -79,6 +79,9 @@ def video_overlay(
 def draw_keypoints(image, keypoints, radius=10, threshold=0.2, color=(255, 255, 255), border_color=(0, 0, 0)):
     """Draw the keypoints on an image"""
     image = image.copy()
+    keypoints = keypoints.copy()
+    keypoints[..., 0] = np.clip(keypoints[..., 0], 0, image.shape[1])
+    keypoints[..., 1] = np.clip(keypoints[..., 1], 0, image.shape[0])
     for i in range(keypoints.shape[0]):
         if keypoints[i, -1] > threshold:
             cv2.circle(image, (int(keypoints[i, 0]), int(keypoints[i, 1])), radius, border_color, -1)

@@ -18,7 +18,7 @@ mmpose_joint_dictionary = {
                     "Right Knee", "Left Ankle", "Right Ankle", "Head", "Neck",
                     "Pelvis", "Left Big Toe", "Right Big Toe", "Left Little Toe",
                     "Right Little Toe", "Left Heel", "Right Heel"],
-    'MMPoseCoco': ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear", "Left Shoulder",
+    'MMPose': ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear", "Left Shoulder",
                    "Right Shoulder", "Left Elbow", "Right Elbow", "Left Wrist", "Right Wrist",
                    "Left Hip", "Right Hip", "Left Knee", "Right Knee", "Left Ankle", "Right Ankle"]
 }
@@ -33,17 +33,22 @@ def mmpose_top_down_person(key, method='HRNet_W48_COCO'):
     if method == 'HRNet_W48_COCO':
         pose_cfg = os.path.join(MODEL_DATA_DIR, "mmpose/config/top_down/darkpose/coco/hrnet_w48_coco_384x288_dark.py")
         pose_ckpt = os.path.join(MODEL_DATA_DIR, "mmpose/checkpoints/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth")
+        num_keypoints = 17
     elif method == 'HRFormer_COCO':
         pose_cfg = os.path.join(MODEL_DATA_DIR, "mmpose/config/top_down/hrformer_base_coco_384x288.py")
         pose_ckpt = os.path.join(MODEL_DATA_DIR, "mmpose/checkpoints/hrformer_base_coco_384x288-ecf0758d_20220316.pth")
+        num_keypoints = 17
     elif method == 'HRNet_W48_COCOWholeBody':
         pose_cfg = os.path.join(MODEL_DATA_DIR, "mmpose/config/coco-wholebody/hrnet_w48_coco_wholebody_384x288_dark_plus.py")
         pose_ckpt = os.path.join(MODEL_DATA_DIR, "mmpose/checkpoints/hrnet_w48_coco_wholebody_384x288_dark-f5726563_20200918.pth")
+        num_keypoints = 133
     elif method == 'HRNet_W48_HALPE':
         pose_cfg = os.path.join(MODEL_DATA_DIR, "mmpose/config/halpe/hrnet_w48_halpe_384x288_dark_plus.py")
         pose_ckpt = os.path.join(MODEL_DATA_DIR, 'mmpose/checkpoints/hrnet_w48_halpe_384x288_dark.pth')
+        num_keypoints = 136
     bboxes = (PersonBbox & key).fetch1("bbox")
-    cap = Video.get_robust_reader(key)
+    video =  Video.get_robust_reader(key, return_cap=False) # returning video allows deleting it
+    cap = Video.get_robust_reader(video)
 
     model = init_pose_model(pose_cfg, pose_ckpt)
 
@@ -56,7 +61,7 @@ def mmpose_top_down_person(key, method='HRNet_W48_COCO'):
 
         # handle the case where person is not tracked in frame
         if np.any(np.isnan(bbox)):
-            results.append(np.zeros((17, 3)))
+            results.append(np.zeros((num_keypoints, 3)))
             continue
 
         bbox_wrap = {"bbox": bbox}
@@ -65,6 +70,8 @@ def mmpose_top_down_person(key, method='HRNet_W48_COCO'):
 
         res = inference_top_down_pose_model(model, frame, [bbox_wrap])[0]
         results.append(res[0]["keypoints"])
+
+    os.remove(video)
 
     return np.asarray(results)
 

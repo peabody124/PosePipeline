@@ -36,7 +36,7 @@ openpose_joints = {
 
 
 class OpenposeParser:
-    def __init__(self, openpose_model_path=None, max_people=3, render=True, results_path=None, hand=False, face=False):
+    def __init__(self, openpose_model_path=None, max_people=10, render=True, results_path=None, hand=False, face=False):
 
         from openpose import pyopenpose as op
 

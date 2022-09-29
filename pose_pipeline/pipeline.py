@@ -198,6 +198,40 @@ class OpenPose(dj.Computed):
 
 
 @schema
+class OpenPoseVideo(dj.Computed):
+    definition = """
+    -> OpenPose
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    """
+
+    def make(self, key):
+
+        from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
+
+        video = (BlurredVideo & key).fetch1("output_video")
+        keypoints = (OpenPose & key).fetch1("keypoints")
+
+        def overlay_fn(image, idx):
+            if keypoints[idx] is None:
+                return image
+            for person_idx in range(keypoints[idx].shape[0]):
+                image = draw_keypoints(image, keypoints[idx][person_idx])
+            return image
+
+        fd, out_file_name = tempfile.mkstemp(suffix=".mp4")
+        os.close(fd)
+        video_overlay(video, out_file_name, overlay_fn, downsample=1)
+
+        key["output_video"] = out_file_name
+
+        self.insert1(key)
+
+        os.remove(out_file_name)
+        os.remove(video)
+
+
+@schema
 class BlurredVideo(dj.Computed):
     definition = """
     -> Video
@@ -647,6 +681,7 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 1, "top_down_method_name": "MMPoseWholebody"},
         {"top_down_method": 2, "top_down_method_name": "MMPoseHalpe"},
         {"top_down_method": 3, "top_down_method_name": "MMPoseHrformerCoco"},
+        {"top_down_method": 4, "top_down_method_name": "OpenPose"},
     ]
 
 
@@ -680,6 +715,11 @@ class TopDownPerson(dj.Computed):
         elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseHrformerCoco":
             from .wrappers.mmpose import mmpose_top_down_person
             key["keypoints"] = mmpose_top_down_person(key, 'HRFormer_COCO')
+        elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "OpenPose":
+            # Manually copying data over to allow this to be used consistently
+            # but also take advantage of the logic assigning the OpenPose person as a
+            # person of interest
+            key["keypoints"] = (OpenPosePerson & key).fetch1('keypoints')
         else:
             raise Exception("Method not implemented")
 
@@ -687,8 +727,11 @@ class TopDownPerson(dj.Computed):
 
     @staticmethod
     def joint_names(method='MMPose'):
-        from .wrappers.mmpose import mmpose_joint_dictionary
-        return mmpose_joint_dictionary[method]
+        if method == 'OpenPose':
+            return OpenPosePerson.joint_names()
+        else:
+            from .wrappers.mmpose import mmpose_joint_dictionary
+            return mmpose_joint_dictionary[method]
 
 
 @schema
@@ -937,6 +980,7 @@ class SMPLMethodLookup(dj.Lookup):
         {"smpl_method": 4, "smpl_method_name": "PARE"},
         {"smpl_method": 5, "smpl_method_name": "PIXIE"},
         {"smpl_method": 6, "smpl_method_name": "ProHMR_MMPose"},
+        {"smpl_method": 7, "smpl_method_name": "HybrIK"},
     ]
 
 
@@ -1014,6 +1058,13 @@ class SMPLPerson(dj.Computed):
             res = process_pixie(key)
             res["model_type"] = "SMPL-X"
 
+        elif smpl_method_name == "HybrIK":
+
+            from .wrappers.hybrik import process_hybrik
+
+            res = process_hybrik(key)
+            res['model_type'] = 'SMPL'
+
         else:
             raise Exception(f"Method {smpl_method_name} not implemented")
 
@@ -1085,6 +1136,12 @@ class SMPLPersonVideo(dj.Computed):
             from .wrappers.pixie import get_pixie_callback
 
             callback = get_pixie_callback(key)
+
+        elif smpl_method_name == "HybrIK":
+            from .wrappers.hybrik import get_hybrik_smpl_callback
+
+            callback = get_hybrik_smpl_callback(key)
+
         else:
             from pose_pipeline.utils.visualization import get_smpl_callback
 
