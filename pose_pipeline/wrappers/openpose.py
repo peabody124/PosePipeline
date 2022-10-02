@@ -91,6 +91,7 @@ class OpenposeParser:
             params["render_pose"] = 0
 
         params["model_pose"] = "BODY_25"
+        params["scale_number"] = 4
 
         self.opWrapper = op.WrapperPython()
         self.opWrapper.configure(params)
