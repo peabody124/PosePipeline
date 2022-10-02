@@ -47,7 +47,7 @@ def annotate(key):
 
     display(JupyterVideo(video, height=480, html_attributes="controls muted autoplay"))
     practice = widgets.ToggleButtons(
-        options= ['Default', *tracks, 'Multiple', 'Skip','Undo', 'Invalid'],
+        options= ['Default', *tracks, 'Multiple', 'Skip', 'Absent', 'Invalid'],
         disabled=False,
         button_style='info', # 'success', 'info', 'warning', 'danger' or ''
         tooltips=["Can't Identify Subject", '0', '1', '2', '3', 'Skip']
@@ -67,9 +67,10 @@ def annotate(key):
         if value == 'Multiple':
             value = [int(v) for v in multiple.value.split(',')]
             assign_video(key, True, value)
-            os.remove(video)
         elif value == 'Skip':
             print('Skipping')
+        elif value == 'Absent':
+            assign_video(key, True, [])
         elif value == 'Invalid':
             print('Flagging Invalid')
             assign_video(key, False)
