@@ -1,9 +1,8 @@
 import os
-import sys
 import cv2
-import numpy as np
 from tqdm import tqdm
-from pose_estimation.inference import vid_wrapper
+from pose_pipeline.env import add_path
+from pose_pipeline import Video
 
 
 openpose_joints = {
@@ -36,7 +35,8 @@ openpose_joints = {
 
 
 class OpenposeParser:
-    def __init__(self, openpose_model_path=None, max_people=10, render=True, results_path=None, hand=False, face=False):
+    def __init__(self, openpose_model_path=None, max_people=10, render=True, results_path=None, hand=False, face=False,
+                 model_pose='BODY_25', **kwargs):
 
         from openpose import pyopenpose as op
 
@@ -90,8 +90,11 @@ class OpenposeParser:
         if not render:
             params["render_pose"] = 0
 
-        params["model_pose"] = "BODY_25"
-        params["scale_number"] = 4
+        params["model_pose"] = model_pose
+
+        for k, v in kwargs.items():
+            print(k, v)
+            params[k] = v
 
         self.opWrapper = op.WrapperPython()
         self.opWrapper.configure(params)
@@ -123,9 +126,9 @@ class OpenposeParser:
         del self.opWrapper
 
 
-def openpose_parse_video(video_file):
+def openpose_parse_video(video_file, **kwargs):
 
-    op = OpenposeParser(render=False, face=False, hand=True)
+    op = OpenposeParser(render=False, **kwargs)
     results = []
 
     cap = cv2.VideoCapture(video_file)
@@ -149,3 +152,17 @@ def openpose_parse_video(video_file):
     cap.release()
 
     return results
+
+
+def openpose_process_key(key, **kwargs):
+
+    video = Video.get_robust_reader(key, return_cap=False)
+
+    with add_path(os.path.join(os.environ["OPENPOSE_PATH"], "build/python")):
+        from pose_pipeline.wrappers.openpose import openpose_parse_video
+
+    res = openpose_parse_video(video, **kwargs)
+    os.remove(video)
+
+    key["keypoints"] = res
+    return key

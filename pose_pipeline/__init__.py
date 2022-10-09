@@ -9,6 +9,7 @@ from .pipeline import CenterHMR, CenterHMRPerson, CenterHMRPersonVideo
 # from .pipeline import MMPoseTopDownPerson, MMPoseTopDownPersonVideo
 # from .pipeline import PoseWarperPerson, PoseWarperPersonVideo
 # from .pipeline import PoseFormerPerson
+from .pipeline import BottomUpMethodLookup, BottomUpMethod, BottomUpPeople, BottomUpPerson, BottomUpVideo
 from .pipeline import TopDownMethodLookup, TopDownMethod, TopDownPerson, TopDownPersonVideo
 from .pipeline import LiftingMethodLookup, LiftingMethod, LiftingPerson, LiftingPersonVideo
 from .pipeline import SMPLMethodLookup, SMPLMethod, SMPLPerson, SMPLPersonVideo

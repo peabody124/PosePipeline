@@ -89,3 +89,47 @@ def lifting_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="M
     BestDetectedFrames.populate(key, reserve_jobs=True)
 
     return len(LiftingPerson & key) > 0
+
+
+def bottomup_to_topdown(keys, bottom_up_method_name='OpenPose_BODY25B', tracking_method_name='DeepSortYOLOv4'):
+    '''
+    Compute a BottomUp person and migrate to top down table
+
+    This doesn't stick exactly to DataJoint design patterns, but
+    combines a PersonBbox and BottomUp method and then creates a
+    TopDownPerson that migrates this data over.
+
+    Params:
+        bottom_up_method_name (str) : should match BottomUpMethod and TopDownMethod
+        tracking_method_name (str)  : tracking method of PersonBbox to use to identify person
+
+    Returns:
+        list of resulting keys
+    '''
+
+    results = []
+    if type(keys) == dict:
+        keys = list(keys)
+
+    for key in keys:
+        key = key.copy()
+
+        # get this here to confirm it will work below
+        bbox_key = (PersonBbox & key & (TrackingBboxMethodLookup & {'tracking_method_name': tracking_method_name})).fetch1('KEY')
+
+        # compute bottom up method for this video
+        key['bottom_up_method_name'] = bottom_up_method_name
+        BottomUpMethod.insert1(key, skip_duplicates=True)
+        BottomUpPeople.populate(key)
+
+        # use the desired tracking method to identify the person
+        key['tracking_method'] = (TrackingBboxMethodLookup & {'tracking_method_name': tracking_method_name}).fetch1('tracking_method')
+        BottomUpPerson.populate(key)
+
+        bbox_key['top_down_method'] = (TopDownMethodLookup & {'top_down_method_name': bottom_up_method_name}).fetch1('top_down_method')
+        TopDownMethod.insert1(bbox_key, skip_duplicates=True)
+        TopDownPerson.populate(bbox_key)
+
+        results.append((TopDownPerson & bbox_key).fetch1('KEY'))
+
+    return results

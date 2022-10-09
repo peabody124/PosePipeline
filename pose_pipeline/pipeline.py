@@ -130,7 +130,9 @@ class BottomUpMethodLookup(dj.Lookup):
     definition = """
     bottom_up_method_name : varchar(50)
     """
-    contents = [{"bottom_up_method_name": "OpenPose"}, {"bottom_up_method_name": "MMPose"}]
+    contents = [{"bottom_up_method_name": "OpenPose"},
+                {"bottom_up_method_name": "OpenPose_BODY25B"},
+                {"bottom_up_method_name": "MMPose"}]
 
 
 @schema
@@ -153,15 +155,66 @@ class BottomUpPeople(dj.Computed):
     def make(self, key):
 
         if key["bottom_up_method_name"] == "OpenPose":
-            raise Exception("OpenPose wrapper not implemented yet")
+            from pose_pipeline.wrappers.openpose import openpose_process_key
+            params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25}
+            key = openpose_process_key(key, **params)
+            # to standardize with MMPose, drop other info
+            key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
+
+        elif key["bottom_up_method_name"] == "OpenPose_BODY25B":
+            from pose_pipeline.wrappers.openpose import openpose_process_key
+            params = {'model_pose': 'BODY_25B', 'scale_number': 4, 'scale_gap': 0.25}
+            key = openpose_process_key(key, **params)
+            # to standardize with MMPose, drop other info
+            key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
+
         elif key["bottom_up_method_name"] == "MMPose":
             from .wrappers.mmpose import mmpose_bottom_up
-
             key["keypoints"] = mmpose_bottom_up(key)
+
         else:
             raise Exception("Method not implemented")
 
         self.insert1(key)
+
+
+@schema
+class BottomUpVideo(dj.Computed):
+    definition = """
+    -> BottomUpPeople
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    """
+
+    def make(self, key):
+
+        from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
+
+        video = (BlurredVideo & key).fetch1("output_video")
+        keypoints = (BottomUpPeople & key).fetch1("keypoints")
+
+        def get_color(i):
+            import numpy as np
+            c = np.array([np.cos(i * np.pi / 2), np.cos(i * np.pi / 4), np.cos(i * np.pi / 8)]) * 127 + 127
+            return c.astype(int).tolist()
+
+        def overlay_fn(image, idx):
+            if keypoints[idx] is None:
+                return image
+            for person_idx in range(keypoints[idx].shape[0]):
+                image = draw_keypoints(image, keypoints[idx][person_idx], color=get_color(person_idx))
+            return image
+
+        fd, out_file_name = tempfile.mkstemp(suffix=".mp4")
+        video_overlay(video, out_file_name, overlay_fn, downsample=1)
+        os.close(fd)
+
+        key["output_video"] = out_file_name
+
+        self.insert1(key)
+
+        os.remove(out_file_name)
+        os.remove(video)
 
 
 @schema
@@ -182,8 +235,7 @@ class OpenPose(dj.Computed):
 
         with add_path(os.path.join(os.environ["OPENPOSE_PATH"], "build/python")):
             from pose_pipeline.wrappers.openpose import openpose_parse_video
-
-            res = openpose_parse_video(video)
+            res = openpose_parse_video(video, face=False, hand=True, scale_number=4)
 
         key["keypoints"] = [r["keypoints"] for r in res]
         key["pose_ids"] = [r["pose_ids"] for r in res]
@@ -586,6 +638,31 @@ class BestDetectedFrames(dj.Computed):
 
 
 @schema
+class BottomUpPerson(dj.Computed):
+    definition = """
+    -> PersonBbox
+    -> BottomUpPeople
+    ---
+    keypoints        : longblob
+    """
+
+    def make(self, key):
+
+        print(key)
+
+        # fetch data
+        keypoints = (BottomUpPeople & key).fetch1("keypoints")
+        bbox = (PersonBbox & key).fetch1("bbox")
+
+        res = [match_keypoints_to_bbox(bbox[idx], keypoints[idx]) for idx in range(bbox.shape[0])]
+        keypoints, _ = list(zip(*res))
+        keypoints = np.array(keypoints)
+        key["keypoints"] = keypoints
+
+        self.insert1(key)
+
+
+@schema
 class OpenPosePerson(dj.Computed):
     definition = """
     -> PersonBbox
@@ -706,6 +783,7 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 2, "top_down_method_name": "MMPoseHalpe"},
         {"top_down_method": 3, "top_down_method_name": "MMPoseHrformerCoco"},
         {"top_down_method": 4, "top_down_method_name": "OpenPose"},
+        {"top_down_method": 6, "top_down_method_name": "OpenPose_BODY25B"},
     ]
 
 
@@ -727,23 +805,32 @@ class TopDownPerson(dj.Computed):
 
     def make(self, key):
 
-        if (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPose":
+        method_name = (TopDownMethodLookup & key).fetch1("top_down_method_name")
+        if method_name == "MMPose":
             from .wrappers.mmpose import mmpose_top_down_person
             key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_COCO')
-        elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseWholebody":
+        elif method_name == "MMPoseWholebody":
             from .wrappers.mmpose import mmpose_top_down_person
             key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_COCOWholeBody')
-        elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseHalpe":
+        elif method_name == 'MMPoseTCFormerWholebody':
+            from .wrappers.mmpose import mmpose_top_down_person
+            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_TCFormer_COCOWholeBody')
+        elif method_name == "MMPoseHalpe":
             from .wrappers.mmpose import mmpose_top_down_person
             key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_HALPE')
-        elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "MMPoseHrformerCoco":
+        elif method_name == "MMPoseHrformerCoco":
             from .wrappers.mmpose import mmpose_top_down_person
             key["keypoints"] = mmpose_top_down_person(key, 'HRFormer_COCO')
-        elif (TopDownMethodLookup & key).fetch1("top_down_method_name") == "OpenPose":
+        elif method_name == "OpenPose":
             # Manually copying data over to allow this to be used consistently
             # but also take advantage of the logic assigning the OpenPose person as a
             # person of interest
             key["keypoints"] = (OpenPosePerson & key).fetch1('keypoints')
+        elif method_name == "OpenPose_BODY25B":
+            # Manually copying data over to allow this to be used consistently
+            # but also take advantage of the logic assigning the OpenPose person as a
+            # person of interest
+            key["keypoints"] = (BottomUpPerson & key & {'bottom_up_method_name': 'OpenPose_BODY25B'}).fetch1('keypoints')
         else:
             raise Exception("Method not implemented")
 
@@ -753,6 +840,13 @@ class TopDownPerson(dj.Computed):
     def joint_names(method='MMPose'):
         if method == 'OpenPose':
             return OpenPosePerson.joint_names()
+        elif method == 'OpenPose_BODY25B':
+            return ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear",
+                    "Left Shoulder", "Right Shoulder", "Left Elbow", "Right Elbow",
+                    "Left Wrist", "Right Wrist", "Left Hip", "Right Hip", "Left Knee",
+                    "Right Knee", "Left Ankle", "Right Ankle", "Neck", "Head",
+                    "Left Big Toe", "Left Little Toe", "Left Heel",
+                    "Right Big Toe", "Right Little Toe", "Right Heel"]
         else:
             from .wrappers.mmpose import mmpose_joint_dictionary
             return mmpose_joint_dictionary[method]
