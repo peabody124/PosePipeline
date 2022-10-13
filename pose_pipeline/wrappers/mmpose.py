@@ -71,6 +71,7 @@ def mmpose_top_down_person(key, method='HRNet_W48_COCO'):
         res = inference_top_down_pose_model(model, frame, [bbox_wrap])[0]
         results.append(res[0]["keypoints"])
 
+    cap.release()
     os.remove(video)
 
     return np.asarray(results)
