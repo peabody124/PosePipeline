@@ -44,11 +44,11 @@ def mmpose_top_down_person(key, method='HRNet_W48_COCO'):
         num_keypoints = 133
     elif method == 'HRNet_W48_HALPE':
         pose_cfg = os.path.join(MODEL_DATA_DIR, "mmpose/config/halpe/hrnet_w48_halpe_384x288_dark_plus.py")
-        pose_ckpt = os.path.join(MODEL_DATA_DIR, 'mmpose/checkpoints/hrnet_w48_halpe_384x288_dark.pth')
+        pose_ckpt = os.path.join(MODEL_DATA_DIR, 'mmpose/checkpoints/hrnet_w48_halpe_384x288_dark_plus-d13c2588_20211021.pth')
         num_keypoints = 136
     bboxes = (PersonBbox & key).fetch1("bbox")
     video =  Video.get_robust_reader(key, return_cap=False) # returning video allows deleting it
-    cap = Video.get_robust_reader(video)
+    cap = cv2.VideoCapture(video)
 
     model = init_pose_model(pose_cfg, pose_ckpt)
 
