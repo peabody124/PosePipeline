@@ -6,7 +6,7 @@ import subprocess
 import numpy as np
 from tqdm import tqdm
 
-from pose_pipeline import VideoInfo, PersonBbox, SMPLPerson
+from pose_pipeline import VideoInfo, PersonBbox, SMPLPerson, TopDownPerson, TopDownPersonVideo
 
 
 def video_overlay(
@@ -113,3 +113,47 @@ def get_smpl_callback(key, poses, betas, cams):
         return frame
 
     return overlay
+
+
+def fetch_frame(query, idx, zoom=False, replot=False, portrait=False, portrait_width=288):
+    ''' Fetch specific frame from a video and optionally plot and crop it
+
+        Params:
+            query    : DJ query that has an output_video to show
+            idx      : frame to fetch
+            zoom     : (optional) set true to zoom on bounding box
+            replot   : (optional) set true to overlay keypoints again (bigger and yellow)
+            portrait : (optional) set true to preserve portrait when zooming
+            portrait_width : (optional, int) desired width of portrait zoomed
+    '''
+
+    import cv2
+    from pose_pipeline.utils.visualization import video_overlay, draw_keypoints
+
+    video = query.fetch1('output_video')
+    cap = cv2.VideoCapture(video)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+    _, frame = cap.read()
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    cap.release()
+    os.remove(video)
+
+    if replot:
+        keypoints = (TopDownPerson & query).fetch1('keypoints')[idx]
+        frame = draw_keypoints(frame, keypoints, radius=20, color=(0, 255, 0))
+
+        bbox_fn = PersonBbox.get_overlay_fn(query)
+        frame = bbox_fn(frame, idx, width=14, color=(0, 0, 255))
+
+    if zoom:
+        from pose_pipeline.utils.bounding_box import crop_image_bbox
+        bbox = (PersonBbox & query).fetch1('bbox')[idx].astype(int)
+
+        if portrait:
+            frame = crop_image_bbox(frame, bbox, target_size=(portrait_width, int(portrait_width * 1920 / 1080)), dilate=1.1)[0]
+        else:
+            frame = crop_image_bbox(frame, bbox)[0]
+
+
+    return frame
