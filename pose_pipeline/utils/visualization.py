@@ -12,7 +12,8 @@ from pose_pipeline import VideoInfo, PersonBbox, SMPLPerson
 def video_overlay(
     video,
     output_name,
-    callback,
+    overlay_callback,
+    confidence_callback,
     downsample=4,
     codec="MP4V",
     blur_faces=False,
@@ -25,7 +26,7 @@ def video_overlay(
     Args:
         video (str): filename for source
         output_name (str): output filename
-        callback (fn(im, idx) -> im): method to overlay frame
+        overlay_callback (fn(im, idx) -> im): method to overlay frame
     """
 
     cap = cv2.VideoCapture(video)
@@ -48,6 +49,10 @@ def video_overlay(
     if max_frames:
         total_frames = max_frames
 
+    qr_count = 0
+    qr_decoded_count = 0
+    qr_decoded = []
+    track_id_qr_detection = {}
     for idx in tqdm(range(total_frames)):
 
         ret, frame = cap.read()
@@ -56,7 +61,10 @@ def video_overlay(
 
         # process image in RGB format
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        out_frame = callback(frame, idx)
+
+        out_frame, qr_count, qr_decoded_count, qr_decoded, track_id_qr_detection = overlay_callback(
+            frame, idx, qr_count, qr_decoded_count, qr_decoded, track_id_qr_detection
+        )
 
         if blur_faces:
             out_frame = blur(out_frame)
@@ -64,8 +72,17 @@ def video_overlay(
         # move back to BGR format and write to movie
         out_frame = cv2.cvtColor(out_frame, cv2.COLOR_RGB2BGR)
         out_frame = cv2.resize(out_frame, output_size)
-        out.write(out_frame)
+        cv2.imshow("image", out_frame)
 
+        cv2.waitKey(1)
+        # out.write(out_frame)
+
+    print(f"Detected the QR code in {qr_count} out of {total_frames} frames ({float(qr_count / total_frames)}).")
+    print(f"Text Decoded: {qr_decoded} {qr_decoded_count} times")
+    print("TRACK IDS WITH QR DETECTIONS")
+    confidence_callback(track_id_qr_detection)
+    # print(track_id_qr_detection)
+    cv2.destroyAllWindows()
     out.release()
     cap.release()
 
