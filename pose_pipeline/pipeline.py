@@ -117,7 +117,6 @@ class VideoInfo(dj.Computed):
 
         self.insert1(key, allow_direct_insert=override)
 
-
     def fetch_timestamps(self):
         assert len(self) == 1, "Restrict to single entity"
         timestamps = self.fetch1("timestamps")
@@ -130,9 +129,11 @@ class BottomUpMethodLookup(dj.Lookup):
     definition = """
     bottom_up_method_name : varchar(50)
     """
-    contents = [{"bottom_up_method_name": "OpenPose"},
-                {"bottom_up_method_name": "OpenPose_BODY25B"},
-                {"bottom_up_method_name": "MMPose"}]
+    contents = [
+        {"bottom_up_method_name": "OpenPose"},
+        {"bottom_up_method_name": "OpenPose_BODY25B"},
+        {"bottom_up_method_name": "MMPose"},
+    ]
 
 
 @schema
@@ -156,20 +157,23 @@ class BottomUpPeople(dj.Computed):
 
         if key["bottom_up_method_name"] == "OpenPose":
             from pose_pipeline.wrappers.openpose import openpose_process_key
-            params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25}
+
+            params = {"model_pose": "BODY_25", "scale_number": 4, "scale_gap": 0.25}
             key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
-            key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
+            key["keypoints"] = [k["keypoints"] for k in key["keypoints"]]
 
         elif key["bottom_up_method_name"] == "OpenPose_BODY25B":
             from pose_pipeline.wrappers.openpose import openpose_process_key
-            params = {'model_pose': 'BODY_25B', 'scale_number': 4, 'scale_gap': 0.25}
+
+            params = {"model_pose": "BODY_25B", "scale_number": 4, "scale_gap": 0.25}
             key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
-            key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
+            key["keypoints"] = [k["keypoints"] for k in key["keypoints"]]
 
         elif key["bottom_up_method_name"] == "MMPose":
             from .wrappers.mmpose import mmpose_bottom_up
+
             key["keypoints"] = mmpose_bottom_up(key)
 
         else:
@@ -195,6 +199,7 @@ class BottomUpVideo(dj.Computed):
 
         def get_color(i):
             import numpy as np
+
             c = np.array([np.cos(i * np.pi / 2), np.cos(i * np.pi / 4), np.cos(i * np.pi / 8)]) * 127 + 127
             return c.astype(int).tolist()
 
@@ -235,6 +240,7 @@ class OpenPose(dj.Computed):
 
         with add_path(os.path.join(os.environ["OPENPOSE_PATH"], "build/python")):
             from pose_pipeline.wrappers.openpose import openpose_parse_video
+
             res = openpose_parse_video(video, face=False, hand=True, scale_number=4)
 
         key["keypoints"] = [r["keypoints"] for r in res]
@@ -297,7 +303,7 @@ class BlurredVideo(dj.Computed):
         from pose_pipeline.utils.visualization import video_overlay
 
         video = Video.get_robust_reader(key, return_cap=False)
-        keypoints = (OpenPose & key).fetch1('keypoints')
+        keypoints = (OpenPose & key).fetch1("keypoints")
 
         def overlay_callback(image, idx):
             image = image.copy()
@@ -317,10 +323,10 @@ class BlurredVideo(dj.Computed):
 
             return image
 
-        _, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        _, out_file_name = tempfile.mkstemp(suffix=".mp4")
         video_overlay(video, out_file_name, overlay_callback, downsample=1)
 
-        key['output_video'] = out_file_name
+        key["output_video"] = out_file_name
         self.insert1(key)
 
         os.remove(out_file_name)
@@ -726,7 +732,7 @@ class OpenPosePerson(dj.Computed):
             "Left Heel",
             "Right Big Toe",
             "Right Little Toe",
-            "Right Heel"
+            "Right Heel",
         ]
 
 
@@ -808,47 +814,76 @@ class TopDownPerson(dj.Computed):
         method_name = (TopDownMethodLookup & key).fetch1("top_down_method_name")
         if method_name == "MMPose":
             from .wrappers.mmpose import mmpose_top_down_person
-            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_COCO')
+
+            key["keypoints"] = mmpose_top_down_person(key, "HRNet_W48_COCO")
         elif method_name == "MMPoseWholebody":
             from .wrappers.mmpose import mmpose_top_down_person
-            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_COCOWholeBody')
-        elif method_name == 'MMPoseTCFormerWholebody':
+
+            key["keypoints"] = mmpose_top_down_person(key, "HRNet_W48_COCOWholeBody")
+        elif method_name == "MMPoseTCFormerWholebody":
             from .wrappers.mmpose import mmpose_top_down_person
-            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_TCFormer_COCOWholeBody')
+
+            key["keypoints"] = mmpose_top_down_person(key, "HRNet_TCFormer_COCOWholeBody")
         elif method_name == "MMPoseHalpe":
             from .wrappers.mmpose import mmpose_top_down_person
-            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_HALPE')
+
+            key["keypoints"] = mmpose_top_down_person(key, "HRNet_W48_HALPE")
         elif method_name == "MMPoseHrformerCoco":
             from .wrappers.mmpose import mmpose_top_down_person
-            key["keypoints"] = mmpose_top_down_person(key, 'HRFormer_COCO')
+
+            key["keypoints"] = mmpose_top_down_person(key, "HRFormer_COCO")
         elif method_name == "OpenPose":
             # Manually copying data over to allow this to be used consistently
             # but also take advantage of the logic assigning the OpenPose person as a
             # person of interest
-            key["keypoints"] = (OpenPosePerson & key).fetch1('keypoints')
+            key["keypoints"] = (OpenPosePerson & key).fetch1("keypoints")
         elif method_name == "OpenPose_BODY25B":
             # Manually copying data over to allow this to be used consistently
             # but also take advantage of the logic assigning the OpenPose person as a
             # person of interest
-            key["keypoints"] = (BottomUpPerson & key & {'bottom_up_method_name': 'OpenPose_BODY25B'}).fetch1('keypoints')
+            key["keypoints"] = (BottomUpPerson & key & {"bottom_up_method_name": "OpenPose_BODY25B"}).fetch1(
+                "keypoints"
+            )
         else:
             raise Exception("Method not implemented")
 
         self.insert1(key)
 
     @staticmethod
-    def joint_names(method='MMPose'):
-        if method == 'OpenPose':
+    def joint_names(method="MMPose"):
+        if method == "OpenPose":
             return OpenPosePerson.joint_names()
-        elif method == 'OpenPose_BODY25B':
-            return ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear",
-                    "Left Shoulder", "Right Shoulder", "Left Elbow", "Right Elbow",
-                    "Left Wrist", "Right Wrist", "Left Hip", "Right Hip", "Left Knee",
-                    "Right Knee", "Left Ankle", "Right Ankle", "Neck", "Head",
-                    "Left Big Toe", "Left Little Toe", "Left Heel",
-                    "Right Big Toe", "Right Little Toe", "Right Heel"]
+        elif method == "OpenPose_BODY25B":
+            return [
+                "Nose",
+                "Left Eye",
+                "Right Eye",
+                "Left Ear",
+                "Right Ear",
+                "Left Shoulder",
+                "Right Shoulder",
+                "Left Elbow",
+                "Right Elbow",
+                "Left Wrist",
+                "Right Wrist",
+                "Left Hip",
+                "Right Hip",
+                "Left Knee",
+                "Right Knee",
+                "Left Ankle",
+                "Right Ankle",
+                "Neck",
+                "Head",
+                "Left Big Toe",
+                "Left Little Toe",
+                "Left Heel",
+                "Right Big Toe",
+                "Right Little Toe",
+                "Right Heel",
+            ]
         else:
             from .wrappers.mmpose import mmpose_joint_dictionary
+
             return mmpose_joint_dictionary[method]
 
 
@@ -1181,7 +1216,7 @@ class SMPLPerson(dj.Computed):
             from .wrappers.hybrik import process_hybrik
 
             res = process_hybrik(key)
-            res['model_type'] = 'SMPL'
+            res["model_type"] = "SMPL"
 
         else:
             raise Exception(f"Method {smpl_method_name} not implemented")
@@ -1545,3 +1580,129 @@ class TopDownPersonVideo(dj.Computed):
             "Right elbow",
             "Right wrist",
         ]
+
+
+@schema
+class TrackingBboxQR(dj.Computed):
+    definition = """
+    -> Video
+    -> TrackingBbox
+    ---
+    qr_results             : longblob
+    """
+
+    def make(self, key):
+
+        from pose_pipeline.utils.tracking import detect_qr_code, calculate_tracking_confidence
+
+        # Fetch the video and tracks from the respective tables
+        video = (BlurredVideo & key).fetch1("output_video")
+        tracks = (TrackingBbox & key).fetch1("tracks")
+
+        N = len(np.unique([t["track_id"] for track in tracks for t in track]))
+        colors = matplotlib.cm.get_cmap("hsv", lut=N)
+
+        # Create OpenCV video capture object to go through each frame
+        cap = cv2.VideoCapture(video)
+
+        # get video info
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+
+        # # configure output
+        # output_size = (int(w / downsample), int(h / downsample))
+        #
+        # fourcc = cv2.VideoWriter_fourcc(*codec)
+        # out = cv2.VideoWriter(output_name, fourcc, fps, output_size)
+        #
+        # if blur_faces:
+        #     blur = FaceBlur()
+
+        if max_frames:
+            total_frames = max_frames
+
+        qr_count = 0
+        qr_decoded_count = 0
+        qr_decoded = []
+        track_id_qr_detection = {}
+        for idx in tqdm(range(total_frames)):
+
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                break
+
+            # process image in RGB format
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # out_frame, qr_count, qr_decoded_count, qr_decoded, track_id_qr_detection = overlay_callback(
+            #     frame, idx, qr_count, qr_decoded_count, qr_decoded, track_id_qr_detection
+            # )
+
+            out_image = frame.copy()
+            qr_image = frame.copy()
+
+            for track in tracks[idx]:
+                c = colors(track["track_id"])
+                c = (int(c[0] * 255.0), int(c[1] * 255.0), int(c[2] * 255.0))
+
+                image = qr_image.copy()
+                small = int(5e-3 * np.max(image.shape))
+                large = 2 * small
+
+                bbox = track["tlbr"]
+                # print(track['track_id'])
+                # qr_detection = detect_qr_code(image,bbox)
+
+                current_track_id = track["track_id"]
+                if current_track_id not in track_id_qr_detection:
+                    track_id_qr_detection[current_track_id] = 0
+                # if track['track_id'] == 1:
+                qr_detection = detect_qr_code(image, bbox)
+
+                if qr_detection != False:
+
+                    # current_track_id = track['track_id']
+                    # if current_track_id in track_id_qr_detection:
+                    track_id_qr_detection[current_track_id] += 1
+                    # else:
+                    #     track_id_qr_detection[current_track_id] = 0
+
+                    qr_count += 1
+                    cv2.circle(out_image, qr_detection[1], 50, color=(0, 255, 0), thickness=10)
+
+                    if qr_detection[0] != "":
+                        qr_decoded_count += 1
+
+                    if qr_detection[0] not in qr_decoded:
+                        qr_decoded.append(qr_detection[0])
+                cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), large)
+                cv2.rectangle(out_image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), c, small)
+
+                label = str(track["track_id"])
+                textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, int(5.0e-3 * out_image.shape[0]), 4)[0]
+                x = int((bbox[0] + bbox[2]) / 2 - textsize[0] / 2)
+                y = int((bbox[3] + bbox[1]) / 2 + textsize[1] / 2)
+                cv2.putText(out_image, label, (x, y), 0, 5.0e-3 * out_image.shape[0], (255, 255, 255), thickness=large)
+                cv2.putText(out_image, label, (x, y), 0, 5.0e-3 * out_image.shape[0], c, thickness=small)
+
+            # if blur_faces:
+            #     out_frame = blur(out_frame)
+
+            # move back to BGR format and write to movie
+            out_frame = cv2.cvtColor(out_image, cv2.COLOR_RGB2BGR)
+            out_frame = cv2.resize(out_image, output_size)
+            cv2.imshow("image", out_image)
+
+            cv2.waitKey(1)
+            # out.write(out_frame)
+
+        print(f"Detected the QR code in {qr_count} out of {total_frames} frames ({float(qr_count / total_frames)}).")
+        print(f"Text Decoded: {qr_decoded} {qr_decoded_count} times")
+        print("TRACK IDS WITH QR DETECTIONS")
+        calculate_tracking_confidence(track_id_qr_detection)
+        # print(track_id_qr_detection)
+        cv2.destroyAllWindows()
+        # out.release()
+        cap.release()
