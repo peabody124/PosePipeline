@@ -1585,18 +1585,19 @@ class TopDownPersonVideo(dj.Computed):
 @schema
 class TrackingBboxQR(dj.Computed):
     definition = """
-    -> Video
     -> TrackingBbox
     ---
     qr_results             : longblob
     """
 
     def make(self, key):
-
+        print(key)
         from pose_pipeline.utils.tracking import detect_qr_code, calculate_tracking_confidence
+        from tqdm import tqdm
+        import matplotlib
 
         # Fetch the video and tracks from the respective tables
-        video = (BlurredVideo & key).fetch1("output_video")
+        video = (Video & key).fetch1("video")
         tracks = (TrackingBbox & key).fetch1("tracks")
 
         N = len(np.unique([t["track_id"] for track in tracks for t in track]))
@@ -1611,8 +1612,10 @@ class TrackingBboxQR(dj.Computed):
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         fps = cap.get(cv2.CAP_PROP_FPS)
 
-        # # configure output
-        # output_size = (int(w / downsample), int(h / downsample))
+        downsample = 4
+
+        # configure output
+        output_size = (int(w / downsample), int(h / downsample))
         #
         # fourcc = cv2.VideoWriter_fourcc(*codec)
         # out = cv2.VideoWriter(output_name, fourcc, fps, output_size)
@@ -1620,13 +1623,14 @@ class TrackingBboxQR(dj.Computed):
         # if blur_faces:
         #     blur = FaceBlur()
 
-        if max_frames:
-            total_frames = max_frames
-
+        # if max_frames:
+        #     total_frames = max_frames
+        print("setting up")
         qr_count = 0
         qr_decoded_count = 0
         qr_decoded = []
         track_id_qr_detection = {}
+        print("detecting qr")
         for idx in tqdm(range(total_frames)):
 
             ret, frame = cap.read()
@@ -1634,7 +1638,7 @@ class TrackingBboxQR(dj.Computed):
                 break
 
             # process image in RGB format
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             # out_frame, qr_count, qr_decoded_count, qr_decoded, track_id_qr_detection = overlay_callback(
             #     frame, idx, qr_count, qr_decoded_count, qr_decoded, track_id_qr_detection
@@ -1701,7 +1705,15 @@ class TrackingBboxQR(dj.Computed):
         print(f"Detected the QR code in {qr_count} out of {total_frames} frames ({float(qr_count / total_frames)}).")
         print(f"Text Decoded: {qr_decoded} {qr_decoded_count} times")
         print("TRACK IDS WITH QR DETECTIONS")
-        calculate_tracking_confidence(track_id_qr_detection)
+
+        key["qr_results"] = track_id_qr_detection
+        self.insert1(key)
+        # Need to update the data that is saved for qr_results
+        # potentially array of all frames of video, each index contains dict
+        # dict structure is {qr_detected_track_id:decoded_text}
+
+        # !!!!!!!!!!!!!!!!!!!! This calculation should be done in an 'evaluation' table, the current table should just detect QR codes
+        # calculate_tracking_confidence(track_id_qr_detection, tracks)
         # print(track_id_qr_detection)
         cv2.destroyAllWindows()
         # out.release()

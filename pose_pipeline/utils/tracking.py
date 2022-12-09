@@ -1,5 +1,7 @@
 import numpy as np
 from pose_pipeline import *
+import cv2
+import pandas as pd
 
 
 def annotate_single_person(filt, subject_id=0, confirm=False):
@@ -22,6 +24,20 @@ def annotate_single_person(filt, subject_id=0, confirm=False):
 
 
 def detect_qr_code(frame, bounding_box):
+    """This methods attempts to detect a QR code in an image. It takes in an
+       image (or video frame) and bounding box to search within. If a QR code
+       is detecting, it will return the decoded text and the position of the
+       center of the QR code. Otherwise it will return False.
+
+    Parameters
+    ----------
+    frame: numpy.ndarray
+        Numpy array of an image of shape H,W,D
+
+    bounding_box: numpy.ndarray
+        Numpy array of the bounding box coordinates wrt to the frame. Bounding
+        box coordinates assumed to be in the form [x1,y1,x2,y2]
+    """
 
     frame_copy = frame.copy()
     # Getting shape of input image
@@ -78,3 +94,30 @@ def detect_qr_code(frame, bounding_box):
         return [decodedText, global_center]
 
     return False
+
+
+def calculate_tracking_confidence(qr_detection_counts, tracks):
+    # Total frames
+    N = len(tracks)
+    Q = sum(qr_detection_counts.values())
+    # First determine how often each track_id was present in the video
+    track_id_counts = {}
+    for track in tracks:
+        # print(len(track))
+        for id_data in track:
+            # print(id_data['track_id'])
+            current_id = id_data["track_id"]
+            if current_id in track_id_counts:
+                track_id_counts[current_id] += 1
+            else:
+                track_id_counts[current_id] = 0
+
+    # Combine track id counts and qr detection counts into a dataframe
+    tracking_info = pd.concat([pd.Series(track_id_counts), pd.Series(qr_detection_counts)], axis=1)
+    tracking_info.columns = ["track_id_count", "qr_detection_count"]
+
+    tracking_info["id_in_frame_pct"] = tracking_info["track_id_count"] / N
+    tracking_info["pct_of_qr_detections"] = tracking_info["qr_detection_count"] / Q
+    tracking_info["confidence"] = tracking_info["id_in_frame_pct"] * tracking_info["pct_of_qr_detections"]
+
+    print(tracking_info)

@@ -1,7 +1,7 @@
 import os
 
 from .pipeline import Video, VideoInfo
-from .pipeline import TrackingBboxMethodLookup, TrackingBboxMethod, TrackingBbox, TrackingBboxVideo
+from .pipeline import TrackingBboxMethodLookup, TrackingBboxMethod, TrackingBbox, TrackingBboxVideo, TrackingBboxQR
 from .pipeline import PersonBboxValid, PersonBbox, BlurredVideo, DetectedFrames, BestDetectedFrames
 from .pipeline import OpenPose, OpenPosePerson, OpenPosePersonVideo
 from .pipeline import CenterHMR, CenterHMRPerson, CenterHMRPersonVideo
