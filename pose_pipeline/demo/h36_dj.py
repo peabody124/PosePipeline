@@ -33,6 +33,24 @@ class Activity(dj.Manual):
     keypoints3d :  longblob
     '''
 
+    @staticmethod
+    def joint_names():
+        ''' H3.6m has a very odd joint convention.
+
+            metadata.xml has the full listing, a number of the joints are called simply
+            'site' and appear to be duplicates. Here I used a consistent name for some
+            of the duplicates (e.g. Neck). There are also some markers outside the body
+            to provide a reference frame. The thumb and wrist end joints, for example,
+            are nothing anatomical but indicate the radial direction from the and and
+            distal direction, so provide a full 3D pose of the wrist.
+        '''
+        return ['Hips',
+                'Right Hip', 'Right Knee', 'Right Ankle', 'RightToeBase', 'SiteRightFoot',
+                'Left Hip', 'Left Knee', 'Left Ankle', 'LeftToeBase', 'SiteLeftFoot',
+                'Hips', 'Spine1', 'Neck', 'Head', 'Head1', 'Neck',
+                'Left Shoulder', 'Left Elbow', 'Left Wrist', 'Left Wrist', 'Left Thumb', 'Left Wrist End', 'Left Wrist End', 'Neck',
+                'Right Shoulder', 'Right Elbow', 'Right Wrist', 'Right Wrist', 'Right Thumb', 'Right Wrist End', 'Right Wrist End']
+
 
 @schema
 class ActivityView(dj.Manual):
