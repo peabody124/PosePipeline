@@ -1606,6 +1606,7 @@ class TrackingBboxQR(dj.Computed):
         qr_decoded_count = 0
         qr_decoded = []
         track_id_qr_detection = {}
+        qr_detection_info = []
         print("detecting qr")
         for idx in tqdm(range(total_frames)):
 
@@ -1622,6 +1623,8 @@ class TrackingBboxQR(dj.Computed):
 
             out_image = frame.copy()
             qr_image = frame.copy()
+
+            track_detections = []
 
             for track in tracks[idx]:
                 c = colors(track["track_id"])
@@ -1649,6 +1652,8 @@ class TrackingBboxQR(dj.Computed):
                     # else:
                     #     track_id_qr_detection[current_track_id] = 0
 
+                    track_detections.append([track["track_id"], qr_detection[0]])
+
                     qr_count += 1
                     cv2.circle(out_image, qr_detection[1], 50, color=(0, 255, 0), thickness=10)
 
@@ -1670,6 +1675,8 @@ class TrackingBboxQR(dj.Computed):
             # if blur_faces:
             #     out_frame = blur(out_frame)
 
+            qr_detection_info.append(track_detections)
+
             # move back to BGR format and write to movie
             out_frame = cv2.cvtColor(out_image, cv2.COLOR_RGB2BGR)
             out_frame = cv2.resize(out_image, output_size)
@@ -1682,11 +1689,11 @@ class TrackingBboxQR(dj.Computed):
         print(f"Text Decoded: {qr_decoded} {qr_decoded_count} times")
         print("TRACK IDS WITH QR DETECTIONS")
 
+        track_id_qr_detection["frame_data"] = qr_detection_info
+
         key["qr_results"] = track_id_qr_detection
+        print(key)
         self.insert1(key)
-        # Need to update the data that is saved for qr_results
-        # potentially array of all frames of video, each index contains dict
-        # dict structure is {qr_detected_track_id:decoded_text}
 
         # !!!!!!!!!!!!!!!!!!!! This calculation should be done in an 'evaluation' table, the current table should just detect QR codes
         # calculate_tracking_confidence(track_id_qr_detection, tracks)
