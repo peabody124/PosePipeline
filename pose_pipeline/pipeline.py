@@ -784,6 +784,7 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 3, "top_down_method_name": "MMPoseHrformerCoco"},
         {"top_down_method": 4, "top_down_method_name": "OpenPose"},
         {"top_down_method": 6, "top_down_method_name": "OpenPose_BODY25B"},
+        {"top_down_method": 5, "top_down_method_name": "MMPoseTCFormerWholebody"},
     ]
 
 

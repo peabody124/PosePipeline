@@ -42,6 +42,10 @@ def mmpose_top_down_person(key, method='HRNet_W48_COCO'):
         pose_cfg = os.path.join(MODEL_DATA_DIR, "mmpose/config/coco-wholebody/hrnet_w48_coco_wholebody_384x288_dark_plus.py")
         pose_ckpt = os.path.join(MODEL_DATA_DIR, "mmpose/checkpoints/hrnet_w48_coco_wholebody_384x288_dark-f5726563_20200918.pth")
         num_keypoints = 133
+    elif method == 'HRNet_TCFormer_COCOWholeBody':
+        pose_cfg = os.path.join(MODEL_DATA_DIR, "mmpose/config/coco-wholebody/tcformer_coco_wholebody_256x192.py")
+        pose_ckpt = os.path.join(MODEL_DATA_DIR, "mmpose/checkpoints/tcformer_coco-wholebody_256x192-a0720efa_20220627.pth")
+        num_keypoints = 133
     elif method == 'HRNet_W48_HALPE':
         pose_cfg = os.path.join(MODEL_DATA_DIR, "mmpose/config/halpe/hrnet_w48_halpe_384x288_dark_plus.py")
         pose_ckpt = os.path.join(MODEL_DATA_DIR, 'mmpose/checkpoints/hrnet_w48_halpe_384x288_dark_plus-d13c2588_20211021.pth')
