@@ -115,7 +115,7 @@ def get_smpl_callback(key, poses, betas, cams):
     return overlay
 
 
-def fetch_frame(query, idx, zoom=False, replot=False, portrait=False, portrait_width=288):
+def fetch_frame(query, idx, zoom=False, replot=False, portrait=False, portrait_width=288, dilate=1.1):
     ''' Fetch specific frame from a video and optionally plot and crop it
 
         Params:
@@ -136,12 +136,14 @@ def fetch_frame(query, idx, zoom=False, replot=False, portrait=False, portrait_w
     _, frame = cap.read()
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
+    frame = cv2.resize(frame, (1024*2, 768*2))
+
     cap.release()
     os.remove(video)
 
     if replot:
         keypoints = (TopDownPerson & query).fetch1('keypoints')[idx]
-        frame = draw_keypoints(frame, keypoints, radius=20, color=(0, 255, 0))
+        frame = draw_keypoints(frame, keypoints, radius=10, color=(0, 255, 0))
 
         bbox_fn = PersonBbox.get_overlay_fn(query)
         frame = bbox_fn(frame, idx, width=14, color=(0, 0, 255))
@@ -151,9 +153,9 @@ def fetch_frame(query, idx, zoom=False, replot=False, portrait=False, portrait_w
         bbox = (PersonBbox & query).fetch1('bbox')[idx].astype(int)
 
         if portrait:
-            frame = crop_image_bbox(frame, bbox, target_size=(portrait_width, int(portrait_width * 1920 / 1080)), dilate=1.1)[0]
+            frame = crop_image_bbox(frame, bbox, target_size=(portrait_width, int(portrait_width * 1920 / 1080)), dilate=dilate)[0]
         else:
-            frame = crop_image_bbox(frame, bbox)[0]
+            frame = crop_image_bbox(frame, bbox, dilate=dilate)[0]
 
 
     return frame
