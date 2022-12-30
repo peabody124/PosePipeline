@@ -27,6 +27,9 @@ def top_down_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="
     PersonBbox.populate(tracking_key, reserve_jobs=True)
 
     if len(PersonBbox & tracking_key) == 0:
+        if len(PersonBboxValid & tracking_key) == 1 and (PersonBboxValid & tracking_key).fetch1('video_subject_id') < 0:
+            print(f"Video {key} marked as invalid.")
+            return False
         print(f"Waiting for annotation of subject of interest. {tracking_key}")
         return False
 
