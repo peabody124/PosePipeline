@@ -132,6 +132,7 @@ class BottomUpMethodLookup(dj.Lookup):
     """
     contents = [{"bottom_up_method_name": "OpenPose"},
                 {"bottom_up_method_name": "OpenPose_BODY25B"},
+                {"bottom_up_method_name": "OpenPose_HR"},
                 {"bottom_up_method_name": "MMPose"}]
 
 
@@ -164,6 +165,18 @@ class BottomUpPeople(dj.Computed):
         elif key["bottom_up_method_name"] == "OpenPose_BODY25B":
             from pose_pipeline.wrappers.openpose import openpose_process_key
             params = {'model_pose': 'BODY_25B', 'scale_number': 4, 'scale_gap': 0.25}
+            key = openpose_process_key(key, **params)
+            # to standardize with MMPose, drop other info
+            key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
+
+        elif key["bottom_up_method_name"] == "OpenPose_HR":
+            from pose_pipeline.wrappers.openpose import openpose_process_key
+            # adopted from https://github.com/stanfordnmbl/opencap-core/blob/0f633d1d6f1e4ddc40ffe49306a1584af9c3af32/docker/openpose/loop.py#L43
+            width, height = (VideoInfo & key).fetch1("width", "height")
+            if width > height:
+                params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25, 'net_resolution': '1008x-1'}
+            else:
+                params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25, 'net_resolution': '-1x1008'}
             key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
             key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
@@ -785,7 +798,8 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 3, "top_down_method_name": "MMPoseHrformerCoco"},
         {"top_down_method": 4, "top_down_method_name": "OpenPose"},
         {"top_down_method": 6, "top_down_method_name": "OpenPose_BODY25B"},
-        {"top_down_method": 5, "top_down_method_name": "MMPoseTCFormerWholebody"},
+        {"top_down_method": 7, "top_down_method_name": "MMPoseTCFormerWholebody"},
+        {"top_down_method": 8, "top_down_method_name": "OpenPose_HR"},
     ]
 
 
@@ -833,6 +847,11 @@ class TopDownPerson(dj.Computed):
             # but also take advantage of the logic assigning the OpenPose person as a
             # person of interest
             key["keypoints"] = (BottomUpPerson & key & {'bottom_up_method_name': 'OpenPose_BODY25B'}).fetch1('keypoints')
+        elif method_name == "OpenPose_HR":
+            # Manually copying data over to allow this to be used consistently
+            # but also take advantage of the logic assigning the OpenPose person as a
+            # person of interest
+            key["keypoints"] = (BottomUpPerson & key & {'bottom_up_method_name': 'OpenPose_HR'}).fetch1('keypoints')
         else:
             raise Exception("Method not implemented")
 
@@ -842,7 +861,7 @@ class TopDownPerson(dj.Computed):
     def joint_names(method='MMPose'):
         if method == 'OpenPose':
             return OpenPosePerson.joint_names()
-        elif method == 'OpenPose_BODY25B':
+        elif method == 'OpenPose_BODY25B' or method == 'OpenPose_HR':
             return ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear",
                     "Left Shoulder", "Right Shoulder", "Left Elbow", "Right Elbow",
                     "Left Wrist", "Right Wrist", "Left Hip", "Right Hip", "Left Knee",
