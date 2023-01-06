@@ -133,6 +133,7 @@ class BottomUpMethodLookup(dj.Lookup):
     contents = [{"bottom_up_method_name": "OpenPose"},
                 {"bottom_up_method_name": "OpenPose_BODY25B"},
                 {"bottom_up_method_name": "OpenPose_HR"},
+                {"bottom_up_method_name": "OpenPose_LR"},
                 {"bottom_up_method_name": "MMPose"}]
 
 
@@ -177,6 +178,13 @@ class BottomUpPeople(dj.Computed):
                 params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25, 'net_resolution': '1008x-1'}
             else:
                 params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25, 'net_resolution': '-1x1008'}
+            key = openpose_process_key(key, **params)
+            # to standardize with MMPose, drop other info
+            key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
+
+        elif key["bottom_up_method_name"] == "OpenPose_LR":
+            from pose_pipeline.wrappers.openpose import openpose_process_key
+            params = {'model_pose': 'BODY_25'}
             key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
             key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
@@ -246,9 +254,18 @@ class OpenPose(dj.Computed):
 
         video = Video.get_robust_reader(key, return_cap=False)
 
+        cap = cv2.VideoCapture(video)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+        if width > height:
+            params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25, 'net_resolution': '1008x-1'}
+        else:
+            params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25, 'net_resolution': '-1x1008'}
+
         with add_path(os.path.join(os.environ["OPENPOSE_PATH"], "build/python")):
             from pose_pipeline.wrappers.openpose import openpose_parse_video
-            res = openpose_parse_video(video, face=False, hand=True, scale_number=4)
+            res = openpose_parse_video(video, face=False, hand=True, **params)
 
         key["keypoints"] = [r["keypoints"] for r in res]
         key["pose_ids"] = [r["pose_ids"] for r in res]
@@ -800,6 +817,7 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 6, "top_down_method_name": "OpenPose_BODY25B"},
         {"top_down_method": 7, "top_down_method_name": "MMPoseTCFormerWholebody"},
         {"top_down_method": 8, "top_down_method_name": "OpenPose_HR"},
+        {"top_down_method": 8, "top_down_method_name": "OpenPose_LR"},
     ]
 
 
@@ -848,10 +866,9 @@ class TopDownPerson(dj.Computed):
             # person of interest
             key["keypoints"] = (BottomUpPerson & key & {'bottom_up_method_name': 'OpenPose_BODY25B'}).fetch1('keypoints')
         elif method_name == "OpenPose_HR":
-            # Manually copying data over to allow this to be used consistently
-            # but also take advantage of the logic assigning the OpenPose person as a
-            # person of interest
             key["keypoints"] = (BottomUpPerson & key & {'bottom_up_method_name': 'OpenPose_HR'}).fetch1('keypoints')
+        elif method_name == "OpenPose_LR":
+            key["keypoints"] = (BottomUpPerson & key & {'bottom_up_method_name': 'OpenPose_LR'}).fetch1('keypoints')
         else:
             raise Exception("Method not implemented")
 
@@ -861,7 +878,7 @@ class TopDownPerson(dj.Computed):
     def joint_names(method='MMPose'):
         if method == 'OpenPose':
             return OpenPosePerson.joint_names()
-        elif method == 'OpenPose_BODY25B' or method == 'OpenPose_HR':
+        elif method == 'OpenPose_BODY25B' or method == 'OpenPose_HR' or method == 'OpenPose_LR':
             return ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear",
                     "Left Shoulder", "Right Shoulder", "Left Elbow", "Right Elbow",
                     "Left Wrist", "Right Wrist", "Left Hip", "Right Hip", "Left Knee",
