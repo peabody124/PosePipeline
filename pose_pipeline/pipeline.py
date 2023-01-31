@@ -1598,58 +1598,24 @@ class TrackingBboxQR(dj.Computed):
         qr_decoded_count = 0
         qr_decoded = []
         track_id_qr_detection = {}
-        qr_detection_track_id = []
-        qr_detection_track_decoded = []
         qr_info_list = []
-        track_info_list = []
         print("detecting qr")
-        prev_track_info_dict = {}
 
-        unique_ids = []
-
-        unique_ids = []
         for idx in tqdm(range(total_frames)):
 
             ret, frame = cap.read()
             if not ret or frame is None:
                 break
 
-            # process image in RGB format
-            # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            # out_frame, qr_count, qr_decoded_count, qr_decoded, track_id_qr_detection = overlay_callback(
-            #     frame, idx, qr_count, qr_decoded_count, qr_decoded, track_id_qr_detection
-            # )
-
             out_image = frame.copy()
             qr_image = frame.copy()
 
-            detected_track_id = []
-            detected_track_decoded = []
             detected_info_dict = {}
-            track_info_dict = {}
 
+            # Cycle through each track in the current frame
             for track in tracks[idx]:
 
                 track_id = track["track_id"]
-
-                if track_id in prev_track_info_dict:
-                    # This means the current track was present in the previous frame
-                    track_info_dict[track_id] = 1
-                elif track_id not in prev_track_info_dict and track_id not in unique_ids:
-                    # This means the current track is new for the video
-                    track_info_dict[track_id] = 1
-                    unique_ids.append(track_id)
-                elif track_id not in prev_track_info_dict and track_id in unique_ids:
-                    # This means the current track disappeared for at least 1 frame
-                    track_info_dict[track_id] = 0
-                else:
-                    print(track_id)
-                    print(track_info_dict)
-                    print(prev_track_info_dict)
-
-                # if track_id not in unique_ids:
-                #     unique_ids.append(track_id)
 
                 c = colors(track_id)
                 c = (int(c[0] * 255.0), int(c[1] * 255.0), int(c[2] * 255.0))
@@ -1659,36 +1625,38 @@ class TrackingBboxQR(dj.Computed):
                 large = 2 * small
 
                 bbox = track["tlbr"]
-                # print(track['track_id'])
-                # qr_detection = detect_qr_code(image,bbox)
 
+                # If the current track id is not present in the QR info dict, initialize it
                 current_track_id = track_id
                 if current_track_id not in track_id_qr_detection:
                     track_id_qr_detection[current_track_id] = 0
-                # if track['track_id'] == 1:
+
+                # Run the QR detection method, which returns [decoded text, center of the QR code] or False
                 qr_detection = detect_qr_code(image, bbox)
 
                 if qr_detection != False:
 
-                    # current_track_id = track['track_id']
-                    # if current_track_id in track_id_qr_detection:
+                    # Increment the detection count for the current track ID
                     track_id_qr_detection[current_track_id] += 1
-                    # else:
-                    #     track_id_qr_detection[current_track_id] = 0
 
-                    detected_track_id.append(track_id)
-                    detected_track_decoded.append(qr_detection[0])
+                    # Add the decoded text to the QR information dictionary for the current track ID
                     detected_info_dict[track_id] = qr_detection[0]
 
+                    # Increment the count of total QR detections
                     qr_count += 1
+
+                    # draw a circle around the QR code based on the location passed from the detection method
                     cv2.circle(out_image, qr_detection[1], 50, color=(0, 255, 0), thickness=10)
 
+                    # Increment the count of correct QR decoding
                     if qr_detection[0] != "":
                         qr_decoded_count += 1
 
+                    # Keep track of the strings decoded during the video
                     if qr_detection[0] not in qr_decoded:
                         qr_decoded.append(qr_detection[0])
 
+                # Draw the bounding box for the current track ID for the current frame
                 cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), large)
                 cv2.rectangle(out_image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), c, small)
 
@@ -1699,21 +1667,7 @@ class TrackingBboxQR(dj.Computed):
                 cv2.putText(out_image, label, (x, y), 0, 5.0e-3 * out_image.shape[0], (255, 255, 255), thickness=large)
                 cv2.putText(out_image, label, (x, y), 0, 5.0e-3 * out_image.shape[0], c, thickness=small)
 
-            # Check if any track ids have disappeared since the last frame
-            disappeared_tracks = [id for id in prev_track_info_dict if id not in track_info_dict]
-
-            for id in disappeared_tracks:
-                track_info_dict[id] = -1
-
-            prev_track_info_dict = track_info_dict.copy()
-
-            # if blur_faces:
-            #     out_frame = blur(out_frame)
-
-            qr_detection_track_id.append(detected_track_id)
-            qr_detection_track_decoded.append(detected_track_decoded)
             qr_info_list.append(detected_info_dict)
-            track_info_list.append(track_info_dict)
 
             # move back to BGR format and write to movie
             out_frame = cv2.cvtColor(out_image, cv2.COLOR_RGB2BGR)
@@ -1721,23 +1675,18 @@ class TrackingBboxQR(dj.Computed):
             cv2.imshow("image", out_frame)
 
             cv2.waitKey(1)
-            # out.write(out_frame)
 
         print(f"Detected the QR code in {qr_count} out of {total_frames} frames ({float(qr_count / total_frames)}).")
         print(f"Text Decoded: {qr_decoded} {qr_decoded_count} times")
         print("TRACK IDS WITH QR DETECTIONS")
 
-        track_id_qr_detection["frame_data_id"] = qr_detection_track_id
-        track_id_qr_detection["frame_data_decoded"] = qr_detection_track_decoded
         track_id_qr_detection["frame_data_dict"] = qr_info_list
 
+        # Save the QR information for the current video
         key["qr_results"] = track_id_qr_detection
         print(key)
         self.insert1(key)
 
-        # !!!!!!!!!!!!!!!!!!!! This calculation should be done in an 'evaluation' table, the current table should just detect QR codes
-        # calculate_tracking_confidence(track_id_qr_detection, tracks)
-        # print(track_id_qr_detection)
         cv2.destroyAllWindows()
         # out.release()
         cap.release()
