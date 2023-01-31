@@ -78,41 +78,34 @@ def detect_qr_code(frame, bounding_box):
         y2, y1 = y1, y2
 
     cropped_frame = frame_copy[y1:y2, x1:x2].copy()
-    # print(f"Frame Dim: {y2-y1}x{x2-x1}", y2, y1, x2, x1, h, w)
-    # print(cv2.contourArea())
-    decodedText0 = "-1"
+
     qrCodeDetector = cv2.QRCodeDetector()
+
+    # Wrap the QR detection in a try/except
+    # Sporadic OpenCV errors occur so just skip those frames
     try:
-        decodedText0, points, _ = qrCodeDetector.detectAndDecode(cropped_frame)
-    except:
-        print("in except")
-        try:
-            print("in try 2")
-            detected, points = qrCodeDetector.detect(cropped_frame)
-        except:
-            print(f"Frame Dim: {y2 - y1}x{x2 - x1}", y2, y1, x2, x1, h, w)
-    # Breaking up detect and decode to see if it fixes OpenCV bugs
+        decodedText, points, _ = qrCodeDetector.detectAndDecode(cropped_frame)
+        # decodedText1, points1, _ = qrCodeDetector.detectAndDecodeCurved(cropped_frame)
 
-    if points is not None:
-        print("Decoded", decodedText0)
-        if cv2.contourArea(points) > 0:
-            print("in contour check")
-            # tqdm.write(f"FRAME, {y1}, {y2}, {x1}, {x2}")
-            # print(detected, points, cv2.contourArea(points))
-            decodedText, qr_code = qrCodeDetector.decode(cropped_frame, points)
-            decodedText1, points, _ = qrCodeDetector.detectAndDecode(cropped_frame)
-            # print(decodedText, decodedText1)
-
+        if points is not None:
+            # decodedText1, _ = qrCodeDetector.decodeCurved(cropped_frame, points)
             points = points[0]
+            # points1 = points1[0]
 
             # get center of all points returned from QR detection
             local_center = np.mean(np.array(points), axis=0).astype(int)
             # adjust the center to be relative to the overall image rather than the cropped image
             global_center = tuple([local_center[0] + x1, local_center[1] + y1])
-            if decodedText != "" or decodedText1 != "" or decodedText0 != "":
-                print(f"DECODED | 1: {decodedText0} | 2: {decodedText} | 3: {decodedText1}", decodedText)
-                # pass
+            # if decodedText != "" or decodedText1 != "":
+            if decodedText != "":
+                # print("DECODED:", decodedText)
+                # print("DECODED1:", decodedText1)
+                pass
             return [decodedText, global_center]
+    except Exception as e:
+        print("Processing error, skipping current frame:")
+        print(e)
+        # raise (e)
 
     return False
 
