@@ -27,7 +27,7 @@ def top_down_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="
     PersonBbox.populate(tracking_key, reserve_jobs=True)
 
     if len(PersonBbox & tracking_key) == 0:
-        if len(PersonBboxValid & tracking_key) == 1 and (PersonBboxValid & tracking_key).fetch1('video_subject_id') < 0:
+        if len(PersonBboxValid & tracking_key) == 1 and (PersonBboxValid & tracking_key).fetch1("video_subject_id") < 0:
             print(f"Video {key} marked as invalid.")
             return False
         print(f"Waiting for annotation of subject of interest. {tracking_key}")
@@ -94,8 +94,8 @@ def lifting_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="M
     return len(LiftingPerson & key) > 0
 
 
-def bottomup_to_topdown(keys, bottom_up_method_name='OpenPose_BODY25B', tracking_method_name='DeepSortYOLOv4'):
-    '''
+def bottomup_to_topdown(keys, bottom_up_method_name="OpenPose_BODY25B", tracking_method_name="DeepSortYOLOv4"):
+    """
     Compute a BottomUp person and migrate to top down table
 
     This doesn't stick exactly to DataJoint design patterns, but
@@ -108,7 +108,7 @@ def bottomup_to_topdown(keys, bottom_up_method_name='OpenPose_BODY25B', tracking
 
     Returns:
         list of resulting keys
-    '''
+    """
 
     results = []
     if type(keys) == dict:
@@ -118,21 +118,33 @@ def bottomup_to_topdown(keys, bottom_up_method_name='OpenPose_BODY25B', tracking
         key = key.copy()
 
         # get this here to confirm it will work below
-        bbox_key = (PersonBbox & key & (TrackingBboxMethodLookup & {'tracking_method_name': tracking_method_name})).fetch1('KEY')
+        bbox_key = (
+            PersonBbox & key & (TrackingBboxMethodLookup & {"tracking_method_name": tracking_method_name})
+        ).fetch1("KEY")
 
-        # compute bottom up method for this video
-        key['bottom_up_method_name'] = bottom_up_method_name
-        BottomUpMethod.insert1(key, skip_duplicates=True)
-        BottomUpPeople.populate(key)
+        if bottom_up_method_name == "Bridging_COCO_25":
+            from pose_pipeline.pipeline import BottomUpBridging, BottomUpBridgingPerson
 
-        # use the desired tracking method to identify the person
-        key['tracking_method'] = (TrackingBboxMethodLookup & {'tracking_method_name': tracking_method_name}).fetch1('tracking_method')
-        BottomUpPerson.populate(key)
+            BottomUpBridging.populate(key)
+            BottomUpBridgingPerson.populate(bbox_key)
+        else:
+            # compute bottom up method for this video
+            key["bottom_up_method_name"] = bottom_up_method_name
+            BottomUpMethod.insert1(key, skip_duplicates=True)
+            BottomUpPeople.populate(key)
 
-        bbox_key['top_down_method'] = (TopDownMethodLookup & {'top_down_method_name': bottom_up_method_name}).fetch1('top_down_method')
+            # use the desired tracking method to identify the person
+            key["tracking_method"] = (TrackingBboxMethodLookup & {"tracking_method_name": tracking_method_name}).fetch1(
+                "tracking_method"
+            )
+            BottomUpPerson.populate(key)
+
+        bbox_key["top_down_method"] = (TopDownMethodLookup & {"top_down_method_name": bottom_up_method_name}).fetch1(
+            "top_down_method"
+        )
         TopDownMethod.insert1(bbox_key, skip_duplicates=True)
         TopDownPerson.populate(bbox_key)
 
-        results.append((TopDownPerson & bbox_key).fetch1('KEY'))
+        results.append((TopDownPerson & bbox_key).fetch1("KEY"))
 
     return results

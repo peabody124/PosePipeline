@@ -117,7 +117,6 @@ class VideoInfo(dj.Computed):
 
         self.insert1(key, allow_direct_insert=override)
 
-
     def fetch_timestamps(self):
         assert len(self) == 1, "Restrict to single entity"
         timestamps = self.fetch1("timestamps")
@@ -130,11 +129,13 @@ class BottomUpMethodLookup(dj.Lookup):
     definition = """
     bottom_up_method_name : varchar(50)
     """
-    contents = [{"bottom_up_method_name": "OpenPose"},
-                {"bottom_up_method_name": "OpenPose_BODY25B"},
-                {"bottom_up_method_name": "OpenPose_HR"},
-                {"bottom_up_method_name": "OpenPose_LR"},
-                {"bottom_up_method_name": "MMPose"}]
+    contents = [
+        {"bottom_up_method_name": "OpenPose"},
+        {"bottom_up_method_name": "OpenPose_BODY25B"},
+        {"bottom_up_method_name": "OpenPose_HR"},
+        {"bottom_up_method_name": "OpenPose_LR"},
+        {"bottom_up_method_name": "MMPose"},
+    ]
 
 
 @schema
@@ -158,39 +159,44 @@ class BottomUpPeople(dj.Computed):
 
         if key["bottom_up_method_name"] == "OpenPose":
             from pose_pipeline.wrappers.openpose import openpose_process_key
-            params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25}
+
+            params = {"model_pose": "BODY_25", "scale_number": 4, "scale_gap": 0.25}
             key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
-            key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
+            key["keypoints"] = [k["keypoints"] for k in key["keypoints"]]
 
         elif key["bottom_up_method_name"] == "OpenPose_BODY25B":
             from pose_pipeline.wrappers.openpose import openpose_process_key
-            params = {'model_pose': 'BODY_25B', 'scale_number': 4, 'scale_gap': 0.25}
+
+            params = {"model_pose": "BODY_25B", "scale_number": 4, "scale_gap": 0.25}
             key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
-            key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
+            key["keypoints"] = [k["keypoints"] for k in key["keypoints"]]
 
         elif key["bottom_up_method_name"] == "OpenPose_HR":
             from pose_pipeline.wrappers.openpose import openpose_process_key
+
             # adopted from https://github.com/stanfordnmbl/opencap-core/blob/0f633d1d6f1e4ddc40ffe49306a1584af9c3af32/docker/openpose/loop.py#L43
             width, height = (VideoInfo & key).fetch1("width", "height")
             if width > height:
-                params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25, 'net_resolution': '1008x-1'}
+                params = {"model_pose": "BODY_25", "scale_number": 4, "scale_gap": 0.25, "net_resolution": "1008x-1"}
             else:
-                params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25, 'net_resolution': '-1x1008'}
+                params = {"model_pose": "BODY_25", "scale_number": 4, "scale_gap": 0.25, "net_resolution": "-1x1008"}
             key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
-            key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
+            key["keypoints"] = [k["keypoints"] for k in key["keypoints"]]
 
         elif key["bottom_up_method_name"] == "OpenPose_LR":
             from pose_pipeline.wrappers.openpose import openpose_process_key
-            params = {'model_pose': 'BODY_25'}
+
+            params = {"model_pose": "BODY_25"}
             key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
-            key['keypoints'] = [k['keypoints'] for k in key['keypoints']]
+            key["keypoints"] = [k["keypoints"] for k in key["keypoints"]]
 
         elif key["bottom_up_method_name"] == "MMPose":
             from .wrappers.mmpose import mmpose_bottom_up
+
             key["keypoints"] = mmpose_bottom_up(key)
 
         else:
@@ -216,6 +222,7 @@ class BottomUpVideo(dj.Computed):
 
         def get_color(i):
             import numpy as np
+
             c = np.array([np.cos(i * np.pi / 2), np.cos(i * np.pi / 4), np.cos(i * np.pi / 8)]) * 127 + 127
             return c.astype(int).tolist()
 
@@ -229,6 +236,76 @@ class BottomUpVideo(dj.Computed):
         fd, out_file_name = tempfile.mkstemp(suffix=".mp4")
         video_overlay(video, out_file_name, overlay_fn, downsample=1)
         os.close(fd)
+
+        key["output_video"] = out_file_name
+
+        self.insert1(key)
+
+        os.remove(out_file_name)
+        os.remove(video)
+
+
+@schema
+class BottomUpBridging(dj.Computed):
+    definition = """
+    -> Video
+    ---
+    boxes         : longblob
+    keypoints2d   : longblob
+    keypoints3d   : longblob
+    """
+
+    def make(self, key):
+
+        from pose_pipeline.wrappers.bridging import bridging_formats_bottom_up
+
+        res = bridging_formats_bottom_up(key)
+        key.update(res)
+        self.insert1(key)
+
+
+@schema
+class BottomUpBridgingVideoLookup(dj.Lookup):
+    definition = """
+    skeleton  : varchar(32)
+    """
+    contents = [
+        {"skeleton": "bml_movi_87"},
+        {"skeleton": "h36m_25"},
+        {"skeleton": "smpl+head_30"},
+        {"skeleton": "mpi_inf_3dhp_28"},
+        {"skeleton": "coco_19"},
+        {"skeleton": "coco_25"},
+    ]
+
+
+@schema
+class BottomUpBridgingVideo(dj.Computed):
+    definition = """
+    -> BottomUpBridging
+    -> BottomUpBridgingVideoLookup
+    ---
+    output_video      : attach@localattach    # datajoint managed video file
+    """
+
+    def make(self, key):
+
+        skeleton = key["skeleton"]
+
+        from pose_pipeline.wrappers.bridging import get_overlay_callback, filter_skeleton, get_skeleton_edges
+        from pose_pipeline.utils.visualization import video_overlay
+
+        video = (BlurredVideo & key).fetch1("output_video")
+        boxes, keypoints2d = (BottomUpBridging & key).fetch1("boxes", "keypoints2d")
+
+        joint_edges = get_skeleton_edges(skeleton)
+        keypoints2d = filter_skeleton(keypoints2d, skeleton)
+
+        overlay_fn = get_overlay_callback(boxes, keypoints2d, joint_edges)
+
+        fd, out_file_name = tempfile.mkstemp(suffix=".mp4")
+        os.close(fd)
+        video_overlay(video, out_file_name, overlay_fn, downsample=1)
 
         key["output_video"] = out_file_name
 
@@ -259,12 +336,13 @@ class OpenPose(dj.Computed):
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
         if width > height:
-            params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25, 'net_resolution': '1008x-1'}
+            params = {"model_pose": "BODY_25", "scale_number": 4, "scale_gap": 0.25, "net_resolution": "1008x-1"}
         else:
-            params = {'model_pose': 'BODY_25', 'scale_number': 4, 'scale_gap': 0.25, 'net_resolution': '-1x1008'}
+            params = {"model_pose": "BODY_25", "scale_number": 4, "scale_gap": 0.25, "net_resolution": "-1x1008"}
 
         with add_path(os.path.join(os.environ["OPENPOSE_PATH"], "build/python")):
             from pose_pipeline.wrappers.openpose import openpose_parse_video
+
             res = openpose_parse_video(video, face=False, hand=True, **params)
 
         key["keypoints"] = [r["keypoints"] for r in res]
@@ -327,7 +405,7 @@ class BlurredVideo(dj.Computed):
         from pose_pipeline.utils.visualization import video_overlay
 
         video = Video.get_robust_reader(key, return_cap=False)
-        keypoints = (OpenPose & key).fetch1('keypoints')
+        keypoints = (OpenPose & key).fetch1("keypoints")
 
         def overlay_callback(image, idx):
             image = image.copy()
@@ -347,11 +425,11 @@ class BlurredVideo(dj.Computed):
 
             return image
 
-        fd, out_file_name = tempfile.mkstemp(suffix='.mp4')
+        fd, out_file_name = tempfile.mkstemp(suffix=".mp4")
         os.close(fd)
         video_overlay(video, out_file_name, overlay_callback, downsample=1)
 
-        key['output_video'] = out_file_name
+        key["output_video"] = out_file_name
         self.insert1(key)
 
         os.remove(out_file_name)
@@ -694,6 +772,54 @@ class BottomUpPerson(dj.Computed):
 
 
 @schema
+class BottomUpBridgingPerson(dj.Computed):
+    definition = """
+    -> PersonBbox
+    -> BottomUpBridging
+    ---
+    bbox             : longblob
+    keypoints        : longblob
+    keypoints3d      : longblob
+    """
+
+    def make(self, key):
+
+        from pose_pipeline.utils.keypoint_matching import compute_iou
+
+        bbox, present = (PersonBbox & key).fetch1("bbox", "present")
+        boxes, keypoints2d, keypoints3d = (BottomUpBridging & key).fetch1("boxes", "keypoints2d", "keypoints3d")
+
+        def match_bbox(bbox1, bbox2, thresh=0.25):
+            iou = compute_iou(bbox1[:, :4], bbox2[None, ...])
+            idx = np.argmax(iou)
+            if iou[idx] > thresh:
+                return idx
+            return None
+
+        idx = [match_bbox(b1, b2) if b1.shape[0] > 0 else None for b1, b2 in zip(boxes, bbox)]
+
+        boxes = np.array([b[i] if i is not None else np.zeros((5,)) for b, i in zip(boxes, idx)])
+        keypoints2d = np.array(
+            [
+                np.concatenate([k[i], np.ones((580, 1))], axis=1) if i is not None else np.zeros((580, 3))
+                for k, i in zip(keypoints2d, idx)
+            ]
+        )
+        keypoints3d = np.array(
+            [
+                np.concatenate([k[i], np.ones((580, 1))], axis=1) if i is not None else np.zeros((580, 4))
+                for k, i in zip(keypoints3d, idx)
+            ]
+        )
+
+        key["bbox"] = boxes
+        key["keypoints"] = keypoints2d
+        key["keypoints3d"] = keypoints3d
+
+        self.insert1(key)
+
+
+@schema
 class OpenPosePerson(dj.Computed):
     definition = """
     -> PersonBbox
@@ -757,7 +883,7 @@ class OpenPosePerson(dj.Computed):
             "Left Heel",
             "Right Big Toe",
             "Right Little Toe",
-            "Right Heel"
+            "Right Heel",
         ]
 
 
@@ -817,7 +943,8 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 6, "top_down_method_name": "OpenPose_BODY25B"},
         {"top_down_method": 7, "top_down_method_name": "MMPoseTCFormerWholebody"},
         {"top_down_method": 8, "top_down_method_name": "OpenPose_HR"},
-        {"top_down_method": 8, "top_down_method_name": "OpenPose_LR"},
+        {"top_down_method": 9, "top_down_method_name": "OpenPose_LR"},
+        {"top_down_method": 11, "top_down_method_name": "Bridging_COCO_25"},
     ]
 
 
@@ -842,51 +969,116 @@ class TopDownPerson(dj.Computed):
         method_name = (TopDownMethodLookup & key).fetch1("top_down_method_name")
         if method_name == "MMPose":
             from .wrappers.mmpose import mmpose_top_down_person
-            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_COCO')
+
+            key["keypoints"] = mmpose_top_down_person(key, "HRNet_W48_COCO")
         elif method_name == "MMPoseWholebody":
             from .wrappers.mmpose import mmpose_top_down_person
-            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_COCOWholeBody')
-        elif method_name == 'MMPoseTCFormerWholebody':
+
+            key["keypoints"] = mmpose_top_down_person(key, "HRNet_W48_COCOWholeBody")
+        elif method_name == "MMPoseTCFormerWholebody":
             from .wrappers.mmpose import mmpose_top_down_person
-            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_TCFormer_COCOWholeBody')
+
+            key["keypoints"] = mmpose_top_down_person(key, "HRNet_TCFormer_COCOWholeBody")
         elif method_name == "MMPoseHalpe":
             from .wrappers.mmpose import mmpose_top_down_person
-            key["keypoints"] = mmpose_top_down_person(key, 'HRNet_W48_HALPE')
+
+            key["keypoints"] = mmpose_top_down_person(key, "HRNet_W48_HALPE")
         elif method_name == "MMPoseHrformerCoco":
             from .wrappers.mmpose import mmpose_top_down_person
-            key["keypoints"] = mmpose_top_down_person(key, 'HRFormer_COCO')
+
+            key["keypoints"] = mmpose_top_down_person(key, "HRFormer_COCO")
         elif method_name == "OpenPose":
             # Manually copying data over to allow this to be used consistently
             # but also take advantage of the logic assigning the OpenPose person as a
             # person of interest
-            key["keypoints"] = (OpenPosePerson & key).fetch1('keypoints')
+            key["keypoints"] = (OpenPosePerson & key).fetch1("keypoints")
         elif method_name == "OpenPose_BODY25B":
             # Manually copying data over to allow this to be used consistently
             # but also take advantage of the logic assigning the OpenPose person as a
             # person of interest
-            key["keypoints"] = (BottomUpPerson & key & {'bottom_up_method_name': 'OpenPose_BODY25B'}).fetch1('keypoints')
+            key["keypoints"] = (BottomUpPerson & key & {"bottom_up_method_name": "OpenPose_BODY25B"}).fetch1(
+                "keypoints"
+            )
         elif method_name == "OpenPose_HR":
-            key["keypoints"] = (BottomUpPerson & key & {'bottom_up_method_name': 'OpenPose_HR'}).fetch1('keypoints')
+            key["keypoints"] = (BottomUpPerson & key & {"bottom_up_method_name": "OpenPose_HR"}).fetch1("keypoints")
         elif method_name == "OpenPose_LR":
-            key["keypoints"] = (BottomUpPerson & key & {'bottom_up_method_name': 'OpenPose_LR'}).fetch1('keypoints')
+            key["keypoints"] = (BottomUpPerson & key & {"bottom_up_method_name": "OpenPose_LR"}).fetch1("keypoints")
+        elif method_name == "Bridging_COCO_25":
+            from pose_pipeline.wrappers.bridging import filter_skeleton
+
+            key["keypoints"] = (BottomUpBridgingPerson & key).fetch1("keypoints")
+            key["keypoints"] = np.array(filter_skeleton(key["keypoints"], "coco_25"))
         else:
             raise Exception("Method not implemented")
 
         self.insert1(key)
 
     @staticmethod
-    def joint_names(method='MMPose'):
-        if method == 'OpenPose':
+    def joint_names(method="MMPose"):
+        if method == "OpenPose":
             return OpenPosePerson.joint_names()
-        elif method == 'OpenPose_BODY25B' or method == 'OpenPose_HR' or method == 'OpenPose_LR':
-            return ["Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear",
-                    "Left Shoulder", "Right Shoulder", "Left Elbow", "Right Elbow",
-                    "Left Wrist", "Right Wrist", "Left Hip", "Right Hip", "Left Knee",
-                    "Right Knee", "Left Ankle", "Right Ankle", "Neck", "Head",
-                    "Left Big Toe", "Left Little Toe", "Left Heel",
-                    "Right Big Toe", "Right Little Toe", "Right Heel"]
+        elif method == "Bridging_COCO_25":
+            from pose_pipeline.wrappers.bridging import get_joint_names
+
+            return [
+                "Neck",
+                "Nose",
+                "Pelvis",
+                "Left Shoulder",
+                "Left Elbow",
+                "Left Wrist",
+                "Left Hip",
+                "Left Knee",
+                "Left Ankle",
+                "Right Shoulder",
+                "Right Elbow",
+                "Right Wrist",
+                "Right Hip",
+                "Right Knee",
+                "Right Ankle",
+                "Left Eye",
+                "Left Ear",
+                "Right Eye",
+                "Right Ear",
+                "Left Big Toe",  # caled lfoo in the code
+                "Left Small Toe",
+                "Left Heel",
+                "Right Big Toe",
+                "Right Small Toe",
+                "Right Heel",
+            ]
+
+        elif method == "OpenPose_BODY25B" or method == "OpenPose_HR" or method == "OpenPose_LR":
+            return [
+                "Nose",
+                "Left Eye",
+                "Right Eye",
+                "Left Ear",
+                "Right Ear",
+                "Left Shoulder",
+                "Right Shoulder",
+                "Left Elbow",
+                "Right Elbow",
+                "Left Wrist",
+                "Right Wrist",
+                "Left Hip",
+                "Right Hip",
+                "Left Knee",
+                "Right Knee",
+                "Left Ankle",
+                "Right Ankle",
+                "Neck",
+                "Head",
+                "Left Big Toe",
+                "Left Little Toe",
+                "Left Heel",
+                "Right Big Toe",
+                "Right Little Toe",
+                "Right Heel",
+            ]
         else:
             from .wrappers.mmpose import mmpose_joint_dictionary
+
             return mmpose_joint_dictionary[method]
 
 
@@ -1219,7 +1411,7 @@ class SMPLPerson(dj.Computed):
             from .wrappers.hybrik import process_hybrik
 
             res = process_hybrik(key)
-            res['model_type'] = 'SMPL'
+            res["model_type"] = "SMPL"
 
         else:
             raise Exception(f"Method {smpl_method_name} not implemented")
@@ -1303,7 +1495,8 @@ class SMPLPersonVideo(dj.Computed):
 
             callback = get_smpl_callback(key, poses, betas, cams)
 
-        video = (BlurredVideo & key).fetch1("output_video")
+        # video = (BlurredVideo & key).fetch1("output_video")
+        video = (Video & key).fetch1("video")
 
         fd, out_file_name = tempfile.mkstemp(suffix=".mp4")
         os.close(fd)
