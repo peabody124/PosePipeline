@@ -122,7 +122,7 @@ def bottomup_to_topdown(keys, bottom_up_method_name="OpenPose_BODY25B", tracking
             PersonBbox & key & (TrackingBboxMethodLookup & {"tracking_method_name": tracking_method_name})
         ).fetch1("KEY")
 
-        if bottom_up_method_name == "Bridging_COCO_25":
+        if bottom_up_method_name in ["Bridging_COCO_25", "Bridging_bml_movi_87"]:
             from pose_pipeline.pipeline import BottomUpBridging, BottomUpBridgingPerson
 
             BottomUpBridging.populate(key)

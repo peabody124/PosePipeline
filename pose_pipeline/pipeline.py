@@ -945,6 +945,7 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 8, "top_down_method_name": "OpenPose_HR"},
         {"top_down_method": 9, "top_down_method_name": "OpenPose_LR"},
         {"top_down_method": 11, "top_down_method_name": "Bridging_COCO_25"},
+        {"top_down_method": 12, "top_down_method_name": "Bridging_bml_movi_87"},
     ]
 
 
@@ -1005,9 +1006,22 @@ class TopDownPerson(dj.Computed):
             key["keypoints"] = (BottomUpPerson & key & {"bottom_up_method_name": "OpenPose_LR"}).fetch1("keypoints")
         elif method_name == "Bridging_COCO_25":
             from pose_pipeline.wrappers.bridging import filter_skeleton
+            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image
 
             key["keypoints"] = (BottomUpBridgingPerson & key).fetch1("keypoints")
             key["keypoints"] = np.array(filter_skeleton(key["keypoints"], "coco_25"))
+            # Filter out keypoints that are outside of the image since confidence estimates do
+            # not capture this
+            key["keypoints"] = keypoints_filter_clipped_image(key, key["keypoints"])
+        elif method_name == "Bridging_bml_movi_87":
+            from pose_pipeline.wrappers.bridging import filter_skeleton
+            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image
+
+            key["keypoints"] = (BottomUpBridgingPerson & key).fetch1("keypoints")
+            key["keypoints"] = np.array(filter_skeleton(key["keypoints"], "bml_movi_87"))
+            # Filter out keypoints that are outside of the image since confidence estimates do
+            # not capture this
+            key["keypoints"] = keypoints_filter_clipped_image(key, key["keypoints"])
         else:
             raise Exception("Method not implemented")
 
@@ -1018,35 +1032,13 @@ class TopDownPerson(dj.Computed):
         if method == "OpenPose":
             return OpenPosePerson.joint_names()
         elif method == "Bridging_COCO_25":
-            from pose_pipeline.wrappers.bridging import get_joint_names
+            from pose_pipeline.wrappers.bridging import normalized_joint_name_dictionary
 
-            return [
-                "Neck",
-                "Nose",
-                "Pelvis",
-                "Left Shoulder",
-                "Left Elbow",
-                "Left Wrist",
-                "Left Hip",
-                "Left Knee",
-                "Left Ankle",
-                "Right Shoulder",
-                "Right Elbow",
-                "Right Wrist",
-                "Right Hip",
-                "Right Knee",
-                "Right Ankle",
-                "Left Eye",
-                "Left Ear",
-                "Right Eye",
-                "Right Ear",
-                "Left Big Toe",  # caled lfoo in the code
-                "Left Small Toe",
-                "Left Heel",
-                "Right Big Toe",
-                "Right Small Toe",
-                "Right Heel",
-            ]
+            return normalized_joint_name_dictionary["coco_25"]
+        elif method == "Bridging_bml_movi_87":
+            from pose_pipeline.wrappers.bridging import normalized_joint_name_dictionary
+
+            return normalized_joint_name_dictionary["bml_movi_87"]
 
         elif method == "OpenPose_BODY25B" or method == "OpenPose_HR" or method == "OpenPose_LR":
             return [
