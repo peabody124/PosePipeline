@@ -81,6 +81,26 @@ def filter_skeleton(keypoints, skeleton, model=None):
     keypoints = [k[..., idx, :] for k in keypoints]
     return keypoints
 
+def scale_align(poses):
+    square_scales = tf.reduce_mean(tf.square(poses), axis=(-2, -1), keepdims=True)
+    mean_square_scale = tf.reduce_mean(square_scales, axis=-3, keepdims=True)
+    return poses * tf.sqrt(mean_square_scale / square_scales)
+
+
+def point_stdev(poses, item_axis, coord_axis):
+    coordwise_variance = tf.math.reduce_variance(poses, axis=item_axis, keepdims=True)
+    average_stdev = tf.sqrt(tf.reduce_sum(coordwise_variance, axis=coord_axis, keepdims=True))
+    return tf.squeeze(average_stdev, (item_axis, coord_axis))
+
+
+def augmentation_noise(poses3d):
+    return point_stdev(scale_align(poses3d), item_axis=1, coord_axis=-1).numpy()
+
+
+def noise_to_conf(x, half_val=200, sharpness=50):
+    x = -(x - half_val) / sharpness
+    return 1 / (1 + tf.math.exp(-x))
+
 
 def bridging_formats_bottom_up(key, model=None, skeleton=""):
 
@@ -98,6 +118,7 @@ def bridging_formats_bottom_up(key, model=None, skeleton=""):
     boxes = []
     keypoints2d = []
     keypoints3d = []
+    keypoint_noises = []
     for _ in tqdm(range(video_length)):
 
         # should match the length of identified person tracks
@@ -106,16 +127,17 @@ def bridging_formats_bottom_up(key, model=None, skeleton=""):
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        pred = model.detect_poses(frame, skeleton=skeleton)
+        pred = model.detect_poses(frame, skeleton=skeleton, num_aug=10, average_aug=False)
 
         boxes.append(pred["boxes"].numpy())
-        keypoints2d.append(pred["poses2d"].numpy())
-        keypoints3d.append(pred["poses3d"].numpy())
+        keypoints2d.append(np.mean(pred["poses2d"].numpy(), axis=1))
+        keypoints3d.append(np.mean(pred["poses3d"].numpy(), axis=1))
+        keypoint_noises.append(augmentation_noise(pred["poses3d"].numpy()))
 
     cap.release()
     os.remove(video)
 
-    return {"boxes": boxes, "keypoints2d": keypoints2d, "keypoints3d": keypoints3d}
+    return {"boxes": boxes, "keypoints2d": keypoints2d, "keypoints3d": keypoints3d, "keypoint_noise": keypoint_noises}
 
 
 def get_overlay_callback(boxes, poses2d, joint_edges=None):

@@ -250,9 +250,10 @@ class BottomUpBridging(dj.Computed):
     definition = """
     -> Video
     ---
-    boxes         : longblob
-    keypoints2d   : longblob
-    keypoints3d   : longblob
+    boxes          : longblob
+    keypoints2d    : longblob
+    keypoints3d    : longblob
+    keypoint_noise : longblob
     """
 
     def make(self, key):
@@ -780,14 +781,16 @@ class BottomUpBridgingPerson(dj.Computed):
     bbox             : longblob
     keypoints        : longblob
     keypoints3d      : longblob
+    keypoint_noise   : longblob
     """
 
     def make(self, key):
 
         from pose_pipeline.utils.keypoint_matching import compute_iou
+        from pose_pipeline.wrappers.bridging import noise_to_conf
 
         bbox, present = (PersonBbox & key).fetch1("bbox", "present")
-        boxes, keypoints2d, keypoints3d = (BottomUpBridging & key).fetch1("boxes", "keypoints2d", "keypoints3d")
+        boxes, keypoints2d, keypoints3d, keypoint_noise = (BottomUpBridging & key).fetch1("boxes", "keypoints2d", "keypoints3d", "keypoint_noise")
 
         def match_bbox(bbox1, bbox2, thresh=0.25):
             iou = compute_iou(bbox1[:, :4], bbox2[None, ...])
@@ -799,15 +802,25 @@ class BottomUpBridgingPerson(dj.Computed):
         idx = [match_bbox(b1, b2) if b1.shape[0] > 0 else None for b1, b2 in zip(boxes, bbox)]
 
         boxes = np.array([b[i] if i is not None else np.zeros((5,)) for b, i in zip(boxes, idx)])
+
+        keypoint_noise = np.array(
+            [
+                k[i] if i is not None else np.zeros((580, ))
+                for k, i in zip(keypoint_noise, idx)
+            ]
+        )
+        conf = noise_to_conf(keypoint_noise)
+        print(conf.shape)
+
         keypoints2d = np.array(
             [
-                np.concatenate([k[i], np.ones((580, 1))], axis=1) if i is not None else np.zeros((580, 3))
+                np.concatenate([k[i], conf[i, :, None]], axis=1) if i is not None else np.zeros((580, 3))
                 for k, i in zip(keypoints2d, idx)
             ]
         )
         keypoints3d = np.array(
             [
-                np.concatenate([k[i], np.ones((580, 1))], axis=1) if i is not None else np.zeros((580, 4))
+                np.concatenate([k[i], conf[i, :, None]], axis=1) if i is not None else np.zeros((580, 4))
                 for k, i in zip(keypoints3d, idx)
             ]
         )
@@ -815,6 +828,7 @@ class BottomUpBridgingPerson(dj.Computed):
         key["bbox"] = boxes
         key["keypoints"] = keypoints2d
         key["keypoints3d"] = keypoints3d
+        key["keypoint_noise"] = keypoint_noise
 
         self.insert1(key)
 
