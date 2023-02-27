@@ -1,6 +1,6 @@
 from pose_pipeline import *
 from pose_pipeline.utils.tracking import annotate_single_person
-
+from typing import List, Dict
 
 def find_lifting_keys(filt=None):
     return ((Video - LiftingPerson) & filt).fetch("KEY")
@@ -148,3 +148,32 @@ def bottomup_to_topdown(keys, bottom_up_method_name="OpenPose_BODY25B", tracking
         results.append((TopDownPerson & bbox_key).fetch1("KEY"))
 
     return results
+
+
+def bottom_up_pipeline(keys: List[Dict], bottom_up_method_name: str = " OpenPose_HR", reserve_jobs: bool = True):
+    """
+    Run bottom up method on a video
+
+    Params:
+        keys (list) : list of keys (dict) to run bottom up on
+        bottom_up_method_name (str) : should match BottomUpMethod and TopDownMethod
+    """
+
+    if type(keys) == dict:
+        keys = list(keys)
+
+    for key in keys:
+        key = key.copy()
+
+        if bottom_up_method_name in ["Bridging_COCO_25", "Bridging_bml_movi_87"]:
+
+            assert False, "Bridging methods do not integrate into primary BottomUp yet."
+
+            from pose_pipeline.pipeline import BottomUpBridging
+            BottomUpBridging.populate(key)
+
+        else:
+            # compute bottom up method for this video
+            key["bottom_up_method_name"] = bottom_up_method_name
+            BottomUpMethod.insert1(key, skip_duplicates=True)
+            BottomUpPeople.populate(key, reserve_jobs=reserve_jobs)
