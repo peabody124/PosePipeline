@@ -6,7 +6,7 @@ import os
 from pose_pipeline import Video
 
 
-def blur_faces(key, downsample=2):
+def blur_faces(key, downsample=1):
 
     from tqdm import trange
     from facenet_pytorch import MTCNN
