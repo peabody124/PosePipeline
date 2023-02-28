@@ -169,7 +169,8 @@ class BottomUpPeople(dj.Computed):
             from pose_pipeline.wrappers.openpose import openpose_process_key
 
             params = {"model_pose": "BODY_25B", "scale_number": 4, "scale_gap": 0.25}
-            key = openpose_process_key(key, **params)
+            with add_path(os.path.join(os.environ["OPENPOSE_PATH"], "build/python")):
+                key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
             key["keypoints"] = [k["keypoints"] for k in key["keypoints"]]
 
@@ -182,7 +183,8 @@ class BottomUpPeople(dj.Computed):
                 params = {"model_pose": "BODY_25", "scale_number": 4, "scale_gap": 0.25, "net_resolution": "1008x-1"}
             else:
                 params = {"model_pose": "BODY_25", "scale_number": 4, "scale_gap": 0.25, "net_resolution": "-1x1008"}
-            key = openpose_process_key(key, **params)
+            with add_path(os.path.join(os.environ["OPENPOSE_PATH"], "build/python")):
+                key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
             key["keypoints"] = [k["keypoints"] for k in key["keypoints"]]
 
@@ -190,7 +192,8 @@ class BottomUpPeople(dj.Computed):
             from pose_pipeline.wrappers.openpose import openpose_process_key
 
             params = {"model_pose": "BODY_25"}
-            key = openpose_process_key(key, **params)
+            with add_path(os.path.join(os.environ["OPENPOSE_PATH"], "build/python")):
+                key = openpose_process_key(key, **params)
             # to standardize with MMPose, drop other info
             key["keypoints"] = [k["keypoints"] for k in key["keypoints"]]
 
