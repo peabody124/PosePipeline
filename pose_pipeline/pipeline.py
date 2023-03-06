@@ -1589,6 +1589,7 @@ class TrackingBboxQR(dj.Computed):
         fps = cap.get(cv2.CAP_PROP_FPS)
 
         downsample = 4
+        visualize = True
 
         # configure output
         output_size = (int(w / downsample), int(h / downsample))
@@ -1599,6 +1600,16 @@ class TrackingBboxQR(dj.Computed):
         qr_decoded = []
         track_id_qr_detection = {}
         qr_info_list = []
+
+        all_qr_results = {}
+
+        counts = {
+            "detections": 0,
+            "decoding": 0,
+        }
+
+        track_id_per_frame = []
+
         print("detecting qr")
 
         for idx in tqdm(range(total_frames)):
@@ -1612,10 +1623,14 @@ class TrackingBboxQR(dj.Computed):
 
             detected_info_dict = {}
 
+            frame_tracks = {}
+
             # Cycle through each track in the current frame
             for track in tracks[idx]:
 
                 track_id = track["track_id"]
+
+                frame_tracks[track_id] = 1
 
                 c = colors(track_id)
                 c = (int(c[0] * 255.0), int(c[1] * 255.0), int(c[2] * 255.0))
@@ -1636,21 +1651,25 @@ class TrackingBboxQR(dj.Computed):
 
                 if qr_detection != False:
 
+                    decodedText, top_left_tuple, bottom_right_tuple
+
                     # Increment the detection count for the current track ID
                     track_id_qr_detection[current_track_id] += 1
 
                     # Add the decoded text to the QR information dictionary for the current track ID
-                    detected_info_dict[track_id] = qr_detection[0]
+                    detected_info_dict[track_id] = decodedText
 
                     # Increment the count of total QR detections
                     qr_count += 1
+                    counts["detections"] += 1
 
-                    # draw a circle around the QR code based on the location passed from the detection method
-                    cv2.circle(out_image, qr_detection[1], 50, color=(0, 255, 0), thickness=10)
+                    # draw a rectangle around the QR code based on the location passed from the detection method
+                    cv2.rectangle(out_image, top_left_tuple, bottom_right_tuple, color=(0, 0, 255), thickness=10)
 
                     # Increment the count of correct QR decoding
                     if qr_detection[0] != "":
                         qr_decoded_count += 1
+                        counts["decoding"] += 1
 
                     # Keep track of the strings decoded during the video
                     if qr_detection[0] not in qr_decoded:
@@ -1672,13 +1691,17 @@ class TrackingBboxQR(dj.Computed):
             # move back to BGR format and write to movie
             out_frame = cv2.cvtColor(out_image, cv2.COLOR_RGB2BGR)
             out_frame = cv2.resize(out_image, output_size)
-            cv2.imshow("image", out_frame)
 
-            cv2.waitKey(1)
+            if visualize:
+                cv2.imshow("image", out_frame)
+                cv2.waitKey(1)
 
         print(f"Detected the QR code in {qr_count} out of {total_frames} frames ({float(qr_count / total_frames)}).")
         print(f"Text Decoded: {qr_decoded} {qr_decoded_count} times")
         print("TRACK IDS WITH QR DETECTIONS")
+
+        all_qr_results["detector"] = qr_info_list
+        all_qr_results["counts"] = counts
 
         track_id_qr_detection["frame_data_dict"] = qr_info_list
 

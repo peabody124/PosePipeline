@@ -2,6 +2,7 @@ import numpy as np
 from pose_pipeline import *
 import cv2
 import pandas as pd
+from qreader import QReader
 
 
 def annotate_single_person(filt, subject_id=0, confirm=False):
@@ -21,6 +22,68 @@ def annotate_single_person(filt, subject_id=0, confirm=False):
         assert len(track_id) == 1, "Found two tracks, should not have"
         k.update({"video_subject_id": subject_id, "keep_tracks": track_id})
         PersonBboxValid.insert1(k)
+
+
+class QRdetector:
+    def __init__(self):
+        pass
+
+    def detect_and_decode(self):
+        raise NotImplementedError()
+
+
+class OpenCVdetector(QRdetector):
+    def __init__(self):
+        # Creating an instance of the QR detector from OpenCV
+        self.qrCodeDetector = cv2.QRCodeDetector()
+
+    def detect_and_decode(self, im):
+        cv2Text, cv2points, _ = self.qrCodeDetector.detectAndDecode(im)
+
+        if cv2points is not None:
+            # Select the points returned from the QR detector
+            cv2points = cv2points[0]
+
+            # get the top left and bottom right corners
+            # these points are relative to the image being passed in
+            # if the image is cropped, then will need to adjust
+            top_left = np.array(cv2points[0]).astype(int)
+            bottom_right = np.array(cv2points[2]).astype(int)
+
+            # return the top left and bottom right corners (np.array(x,y))
+            # and the text
+            return [cv2Text, top_left, bottom_right]
+
+        return False
+
+
+class QReaderdetector(QRdetector):
+    def __init__(self):
+        # Creating an instance of the QR detector from OpenCV
+        self.qrCodeDetector = QReader()
+
+    def detect_and_decode(self, im):
+        im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+        qreader_out = self.qrCodeDetector.detect_and_decode(image=im, return_bboxes=True)
+
+        if len(q_out) > 0:
+
+            # Getting the coordinates for the QR code bbox
+            # these points are relative to the image being passed in
+            # if the image is cropped, then will need to adjust
+            x1, y1, x2, y2 = q_out[0][0]
+            top_left = np.array([x1, y1]).astype(int)
+            bottom_right = np.array([x2, y2]).astype(int)
+
+            qText = q_out[0][1]
+            if qText == None:
+                qText = ""
+
+            # return the top left and bottom right corners (np.array(x,y))
+            # and the text
+            return [qText, top_left, bottom_right]
+
+        return False
 
 
 def detect_qr_code(frame, bounding_box):
@@ -79,33 +142,28 @@ def detect_qr_code(frame, bounding_box):
 
     cropped_frame = frame_copy[y1:y2, x1:x2].copy()
 
-    qrCodeDetector = cv2.QRCodeDetector()
+    # create instances of QR code detectors
+    # Just using QReader now but can use OpenCV as well
+    # opencv_detector = OpenCVdetector()
+    qreader_detector = QReaderdetector()
 
     # Wrap the QR detection in a try/except
     # Sporadic OpenCV errors occur so just skip those frames
     try:
-        decodedText, points, _ = qrCodeDetector.detectAndDecode(cropped_frame)
-        # decodedText1, points1, _ = qrCodeDetector.detectAndDecodeCurved(cropped_frame)
+        qr_output = qreader_detector.detect_and_decode(cropped_frame)
 
-        if points is not None:
-            # decodedText1, _ = qrCodeDetector.decodeCurved(cropped_frame, points)
-            points = points[0]
-            # points1 = points1[0]
+        if qr_output is not False:
 
-            # get center of all points returned from QR detection
-            local_center = np.mean(np.array(points), axis=0).astype(int)
-            # adjust the center to be relative to the overall image rather than the cropped image
-            global_center = tuple([local_center[0] + x1, local_center[1] + y1])
-            # if decodedText != "" or decodedText1 != "":
-            if decodedText != "":
-                # print("DECODED:", decodedText)
-                # print("DECODED1:", decodedText1)
-                pass
-            return [decodedText, global_center]
+            decodedText, top_left, bottom_right = qr_output
+            # Adjust the coordinates to be relative to the overall image rather than the cropped image
+            top_left_tuple = tuple([x1, y1] + top_left)
+            bottom_right_tuple = tuple([x1, y1] + bottom_right)
+
+            return [decodedText, top_left_tuple, bottom_right_tuple]
+
     except Exception as e:
         print("Processing error, skipping current frame:")
         print(e)
-        # raise (e)
 
     return False
 
