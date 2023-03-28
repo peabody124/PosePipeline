@@ -1576,13 +1576,14 @@ class TrackingBboxQR(dj.Computed):
         video = (Video & key).fetch1("video")
         tracks = (TrackingBbox & key).fetch1("tracks")
 
+        # Get the number of unique track IDs and generate colors for each
         N = len(np.unique([t["track_id"] for track in tracks for t in track]))
         colors = matplotlib.cm.get_cmap("hsv", lut=N)
 
         # Create OpenCV video capture object to go through each frame
         cap = cv2.VideoCapture(video)
 
-        # get video info
+        # get video info (total frames, frame height/width, frames per second)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -1628,30 +1629,33 @@ class TrackingBboxQR(dj.Computed):
             # Cycle through each track in the current frame
             for track in tracks[idx]:
 
+                # Getting the track id and bounding box from the current track
                 track_id = track["track_id"]
+                bbox = track["tlbr"]
 
                 frame_tracks[track_id] = 1
 
                 c = colors(track_id)
                 c = (int(c[0] * 255.0), int(c[1] * 255.0), int(c[2] * 255.0))
 
+                # Making a copy of the current frame and determining sizes for bounding boxes
                 image = qr_image.copy()
                 small = int(5e-3 * np.max(image.shape))
                 large = 2 * small
 
-                bbox = track["tlbr"]
-
-                # If the current track id is not present in the QR info dict, initialize it
+                # If the current track id is not present in the QR info dict, add it and initialize count to 0
                 current_track_id = track_id
                 if current_track_id not in track_id_qr_detection:
                     track_id_qr_detection[current_track_id] = 0
 
-                # Run the QR detection method, which returns [decoded text, center of the QR code] or False
+                # Run the QR detection method, which returns [decoded text, top left of QR code, bottom right of QR code] or False
                 qr_detection = detect_qr_code(image, bbox)
 
+                # This variable is False if no QR codes are detected
                 if qr_detection != False:
 
-                    decodedText, top_left_tuple, bottom_right_tuple
+                    # Unpacking the output of the QR detection method
+                    decodedText, top_left_tuple, bottom_right_tuple = qr_detection
 
                     # Increment the detection count for the current track ID
                     track_id_qr_detection[current_track_id] += 1
@@ -1679,6 +1683,7 @@ class TrackingBboxQR(dj.Computed):
                 cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), large)
                 cv2.rectangle(out_image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), c, small)
 
+                # Add track ID text to the image
                 label = str(track_id)
                 textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, int(5.0e-3 * out_image.shape[0]), 4)[0]
                 x = int((bbox[0] + bbox[2]) / 2 - textsize[0] / 2)
@@ -1711,5 +1716,4 @@ class TrackingBboxQR(dj.Computed):
         self.insert1(key)
 
         cv2.destroyAllWindows()
-        # out.release()
         cap.release()
