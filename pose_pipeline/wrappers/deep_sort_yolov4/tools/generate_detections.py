@@ -58,7 +58,7 @@ def extract_image_patch(image, bbox, patch_shape):
 
     # convert to top left, bottom right
     bbox[2:] += bbox[:2]
-    bbox = bbox.astype(np.int)
+    bbox = bbox.astype(int)
 
     # clip at image boundaries
     bbox[:2] = np.maximum(0, bbox[:2])
@@ -87,7 +87,7 @@ class ImageEncoder(object):
         self.image_shape = self.input_var.get_shape().as_list()[1:]
 
     def __call__(self, data_x, batch_size=32):
-        out = np.zeros((len(data_x), self.feature_dim), np.float32)
+        out = np.zeros((len(data_x), self.feature_dim), float)
         _run_in_batches(
             lambda x: self.session.run(self.output_var, feed_dict=x), {self.input_var: data_x}, out, batch_size
         )
@@ -152,9 +152,9 @@ def generate_detections(encoder, mot_dir, output_dir, detection_dir=None):
         detections_in = np.loadtxt(detection_file, delimiter=",")
         detections_out = []
 
-        frame_indices = detections_in[:, 0].astype(np.int)
-        min_frame_idx = frame_indices.astype(np.int).min()
-        max_frame_idx = frame_indices.astype(np.int).max()
+        frame_indices = detections_in[:, 0].astype(int)
+        min_frame_idx = frame_indices.astype(int).min()
+        max_frame_idx = frame_indices.astype(int).max()
         for frame_idx in range(min_frame_idx, max_frame_idx + 1):
             print("Frame %05d/%05d" % (frame_idx, max_frame_idx))
             mask = frame_indices == frame_idx
