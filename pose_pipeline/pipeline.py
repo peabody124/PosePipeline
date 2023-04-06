@@ -1285,7 +1285,7 @@ class LiftingPersonVideo(dj.Computed):
 
             joints_left, joints_right = [4, 5, 6, 11, 12, 13], [1, 2, 3, 14, 15, 16]
             kps_left, kps_right = [4, 5, 6, 11, 12, 13], [1, 2, 3, 14, 15, 16]
-            rot = np.array([0.14070565, -0.15007018, -0.7552408, 0.62232804], dtype=np.float32)
+            rot = np.array([0.14070565, -0.15007018, -0.7552408, 0.62232804], dtype=float)
             keypoints_metadata = {
                 "keypoints_symmetry": (joints_left, joints_right),
                 "layout_name": "Human3.6M",
@@ -1307,7 +1307,7 @@ class LiftingPersonVideo(dj.Computed):
                 skeleton,
                 fps,
                 30000,
-                np.array(70.0, dtype=np.float32),
+                np.array(70.0, dtype=float),
                 out_file_name,
                 input_video_path=blurred_video,
                 viewport=(width, height),
@@ -1660,7 +1660,7 @@ class CenterHMRPersonVideo(dj.Computed):
             if overlay.renderer is None:
                 overlay.renderer = PyrendererRenderer(smpl.get_faces(), (h, w))
 
-            verts = smpl(body_pose.astype(np.float32)[None, ...], body_beta.astype(np.float32)[None, ...])[0][0]
+            verts = smpl(body_pose.astype(float)[None, ...], body_beta.astype(float)[None, ...])[0][0]
 
             cam = [pose_data["cams"][idx][0], *pose_data["cams"][idx][:3]]
             if h > w:

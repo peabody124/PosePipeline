@@ -47,7 +47,7 @@ def crop_image_bbox(image, bbox, target_size=(288, 384), dilate=1.2):
     # three points on corner of bounding box
     src = np.asarray([[bbox[0], bbox[1]], [bbox[0] + bbox[2], bbox[1] + bbox[3]], [bbox[0], bbox[1] + bbox[3]]])
     dst = np.array([[0, 0], [target_size[0], target_size[1]], [0, target_size[1]]])
-    trans = cv2.getAffineTransform(np.float32(src), np.float32(dst))
+    trans = cv2.getAffineTransform(float(src), float(dst))
     image = cv2.warpAffine(image, trans, target_size, flags=cv2.INTER_LINEAR)
 
     return image, bbox

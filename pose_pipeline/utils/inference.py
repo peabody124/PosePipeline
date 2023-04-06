@@ -42,13 +42,13 @@ def get_max_preds(batch_heatmaps):
     maxvals = maxvals.reshape((batch_size, num_joints, 1))
     idx = idx.reshape((batch_size, num_joints, 1))
 
-    preds = np.tile(idx, (1, 1, 2)).astype(np.float32)
+    preds = np.tile(idx, (1, 1, 2)).astype(float)
 
     preds[:, :, 0] = (preds[:, :, 0]) % width
     preds[:, :, 1] = np.floor((preds[:, :, 1]) / width)
 
     pred_mask = np.tile(np.greater(maxvals, 0.0), (1, 1, 2))
-    pred_mask = pred_mask.astype(np.float32)
+    pred_mask = pred_mask.astype(float)
 
     preds *= pred_mask
     return preds, maxvals
