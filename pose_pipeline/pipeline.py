@@ -135,6 +135,9 @@ class BottomUpMethodLookup(dj.Lookup):
         {"bottom_up_method_name": "OpenPose_HR"},
         {"bottom_up_method_name": "OpenPose_LR"},
         {"bottom_up_method_name": "MMPose"},
+
+        # this uses the COCO25 keypoints but in the same order as OpenPose
+        {"bottom_up_method_name": "Bridging_OpenPose"},
     ]
 
 
@@ -202,6 +205,34 @@ class BottomUpPeople(dj.Computed):
 
             key["keypoints"] = mmpose_bottom_up(key)
 
+        elif key["bottom_up_method_name"] == "Bridging_OpenPose":
+            from .wrappers.bridging import filter_skeleton, normalized_joint_name_dictionary, noise_to_conf
+            assert BottomUpBridging & key, f"Bridging not computed: {key}"
+
+            openpose_reorder_idx = [normalized_joint_name_dictionary['coco_25'].index(j) 
+                                    for j in OpenPosePerson.joint_names()]
+
+            keypoints2d, keypoint_noise = (BottomUpBridging  & key).fetch1('keypoints2d', 'keypoint_noise')
+
+            final_keypoints = []
+            for kp, noise in zip(keypoints2d, keypoint_noise):
+                
+                if len(kp) == 0:
+                    kp = np.concatenate([kp, noise[..., None]], axis=-1)
+                    final_keypoints.append(kp)
+                    continue
+                
+                # concatenate noise to final dimension
+                noise = noise_to_conf(noise).numpy()
+                kp = np.concatenate([kp, noise[:, :, None]], axis=-1)
+                
+                # filter and reorder to match OpenPose order, for compatibility downstream
+                kp = filter_skeleton(kp, 'coco_25')
+                kp = kp[:, openpose_reorder_idx]
+                
+                final_keypoints.append(kp)
+
+            key["keypoints"] = final_keypoints
         else:
             raise Exception("Method not implemented")
 

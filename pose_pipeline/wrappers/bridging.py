@@ -78,7 +78,7 @@ def filter_skeleton(keypoints, skeleton, model=None):
         model = get_model()
     idx = model.per_skeleton_indices[skeleton]
 
-    keypoints = [k[..., idx, :] for k in keypoints]
+    keypoints = np.array([k[..., idx, :] for k in keypoints])
     return keypoints
 
 def scale_align(poses):
@@ -177,7 +177,7 @@ def get_overlay_callback(boxes, poses2d, joint_edges=None):
 
 normalized_joint_name_dictionary = {
     "coco_25": [
-        "Neck",
+        "Sternum", # "Neck",
         "Nose",
         "Pelvis",
         "Left Shoulder",
@@ -197,10 +197,10 @@ normalized_joint_name_dictionary = {
         "Right Eye",
         "Right Ear",
         "Left Big Toe",  # caled lfoo in the code
-        "Left Small Toe",
+        "Left Little Toe",
         "Left Heel",
         "Right Big Toe",
-        "Right Small Toe",
+        "Right Little Toe",
         "Right Heel",
     ],
     "bml_movi_87": [
