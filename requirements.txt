@@ -1,15 +1,16 @@
 datajoint
-matplotlib
-numpy
-tensorflow
-opencv-python>=4.5.1
-pyrender>=0.1.45
-mmcv-full
-mmdet
-mmtrack
-mmpose
-python-dotenv
-GitPython
+opencv-python
+
+# matplotlib
+# numpy
+# tensorflow
+# opencv-python>=4.5.1
+# pyrender>=0.1.45
+# mmcv-full
+# mmdet
+# mmtrack
+# mmpose
+# python-dotenv
 
 # Non-packages. Required, but not installable. Section read by env.py code
 # git+https://github.com/CMU-Perceptual-Computing-Lab/openpose
