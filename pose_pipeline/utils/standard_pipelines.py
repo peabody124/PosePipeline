@@ -150,7 +150,7 @@ def bottomup_to_topdown(keys, bottom_up_method_name="OpenPose_BODY25B", tracking
     return results
 
 
-def bottom_up_pipeline(keys: List[Dict], bottom_up_method_name: str = " OpenPose_HR", reserve_jobs: bool = True):
+def bottom_up_pipeline(keys: List[Dict], bottom_up_method_name: str = "OpenPose_HR", reserve_jobs: bool = True):
     """
     Run bottom up method on a video
 
@@ -166,11 +166,14 @@ def bottom_up_pipeline(keys: List[Dict], bottom_up_method_name: str = " OpenPose
         key = key.copy()
 
         if bottom_up_method_name in ["Bridging_COCO_25", "Bridging_bml_movi_87"]:
-
-            assert False, "Bridging methods do not integrate into primary BottomUp yet."
-
             from pose_pipeline.pipeline import BottomUpBridging
-            BottomUpBridging.populate(key)
+            BottomUpBridging.populate(key, reserve_jobs=reserve_jobs)
+
+            # migrate those results to BottomUpPeople
+            k = (Video & key).fetch1('KEY')
+            k['bottom_up_method_name'] = "Bridging_OpenPose"        
+            BottomUpMethod.insert(k)
+            BottomUpPeople.populate(k, reserve_jobs=reserve_jobs)
 
         else:
             # compute bottom up method for this video

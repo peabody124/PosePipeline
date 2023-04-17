@@ -86,6 +86,11 @@ def download_git_dependencies():
             os.system(f"git -C {get_pose_project_dir()} clone {repo}")
 
 
+def jax_memory_limit():
+    import os
+    os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+
+
 def pytorch_memory_limit(frac=0.5):
     # limit pytorch memory
     import torch
