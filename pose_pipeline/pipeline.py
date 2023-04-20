@@ -106,6 +106,10 @@ class VideoInfo(dj.Computed):
 
         cap = cv2.VideoCapture(video)
         key["fps"] = fps = cap.get(cv2.CAP_PROP_FPS)
+        if (key["fps"] < 1):
+            cap.release()
+            raise Exception("FPS is less than 1")
+
         key["num_frames"] = frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         key["width"] = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         key["height"] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
