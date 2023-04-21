@@ -165,15 +165,19 @@ def bottom_up_pipeline(keys: List[Dict], bottom_up_method_name: str = "OpenPose_
     for key in keys:
         key = key.copy()
 
-        if bottom_up_method_name in ["Bridging_COCO_25", "Bridging_bml_movi_87"]:
+        if bottom_up_method_name in ["Bridging_COCO_25", "Bridging_bml_movi_87", "Bridging_OpenPose"]:
             from pose_pipeline.pipeline import BottomUpBridging
             BottomUpBridging.populate(key, reserve_jobs=reserve_jobs)
 
+            if len(BottomUpBridging & key) == 0:
+                print(f"Bottom up job must be reserved and not completed. Skipping {key}")
+                continue
+            
             # migrate those results to BottomUpPeople
-            k = (Video & key).fetch1('KEY')
-            k['bottom_up_method_name'] = "Bridging_OpenPose"        
-            BottomUpMethod.insert(k)
-            BottomUpPeople.populate(k, reserve_jobs=reserve_jobs)
+            key = (Video & key).fetch1('KEY')
+            key["bottom_up_method_name"] = bottom_up_method_name
+            BottomUpMethod.insert1(key, skip_duplicates=True)
+            BottomUpPeople.populate(key, reserve_jobs=reserve_jobs)
 
         else:
             # compute bottom up method for this video
