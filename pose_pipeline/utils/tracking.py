@@ -66,16 +66,16 @@ class QReaderdetector(QRdetector):
         im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
         qreader_out = self.qrCodeDetector.detect_and_decode(image=im, return_bboxes=True)
 
-        if len(q_out) > 0:
+        if len(qreader_out) > 0:
 
             # Getting the coordinates for the QR code bbox
             # these points are relative to the image being passed in
             # if the image is cropped, then will need to adjust
-            x1, y1, x2, y2 = q_out[0][0]
+            x1, y1, x2, y2 = qreader_out[0][0]
             top_left = np.array([x1, y1]).astype(int)
             bottom_right = np.array([x2, y2]).astype(int)
 
-            qText = q_out[0][1]
+            qText = qreader_out[0][1]
             if qText == None:
                 qText = ""
 
@@ -86,7 +86,7 @@ class QReaderdetector(QRdetector):
         return False
 
 
-def detect_qr_code(frame, bounding_box):
+def detect_qr_code(frame, bounding_box, qr_detector):
     """This methods attempts to detect a QR code in an image. It takes in an
        image (or video frame) and bounding box to search within. If a QR code
        is detecting, it will return the decoded text and the position of the
@@ -142,15 +142,15 @@ def detect_qr_code(frame, bounding_box):
 
     cropped_frame = frame_copy[y1:y2, x1:x2].copy()
 
-    # create instances of QR code detectors
-    # Just using QReader now but can use OpenCV as well
-    # opencv_detector = OpenCVdetector()
-    qreader_detector = QReaderdetector()
+    # # create instances of QR code detectors
+    # # Just using QReader now but can use OpenCV as well
+    # # opencv_detector = OpenCVdetector()
+    # qreader_detector = QReaderdetector()
 
     # Wrap the QR detection in a try/except
     # Sporadic OpenCV errors occur so just skip those frames
     try:
-        qr_output = qreader_detector.detect_and_decode(cropped_frame)
+        qr_output = qr_detector.detect_and_decode(cropped_frame)
 
         if qr_output is not False:
 
