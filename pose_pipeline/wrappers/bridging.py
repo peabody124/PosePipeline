@@ -127,7 +127,8 @@ def bridging_formats_bottom_up(key, model=None, skeleton=""):
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        pred = model.detect_poses(frame, skeleton=skeleton, num_aug=10, average_aug=False)
+        pred = model.detect_poses(frame, skeleton=skeleton, num_aug=10, average_aug=False,
+                                  detector_flip_aug=True, detector_threshold=0.1)
 
         boxes.append(pred["boxes"].numpy())
         keypoints2d.append(np.mean(pred["poses2d"].numpy(), axis=1))
