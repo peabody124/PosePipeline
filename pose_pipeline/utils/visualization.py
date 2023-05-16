@@ -13,7 +13,6 @@ def video_overlay(
     video,
     output_name,
     overlay_callback,
-    confidence_callback,
     downsample=4,
     codec="MP4V",
     blur_faces=False,
@@ -62,9 +61,7 @@ def video_overlay(
         # process image in RGB format
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        out_frame, qr_count, qr_decoded_count, qr_decoded, track_id_qr_detection = overlay_callback(
-            frame, idx, qr_count, qr_decoded_count, qr_decoded, track_id_qr_detection
-        )
+        out_frame = overlay_callback(frame,idx)
 
         if blur_faces:
             out_frame = blur(out_frame)
@@ -72,17 +69,17 @@ def video_overlay(
         # move back to BGR format and write to movie
         out_frame = cv2.cvtColor(out_frame, cv2.COLOR_RGB2BGR)
         out_frame = cv2.resize(out_frame, output_size)
-        cv2.imshow("image", out_frame)
+        # cv2.imshow("image", out_frame)
 
-        cv2.waitKey(1)
-        # out.write(out_frame)
+        # cv2.waitKey(1)
+        out.write(out_frame)
 
-    print(f"Detected the QR code in {qr_count} out of {total_frames} frames ({float(qr_count / total_frames)}).")
-    print(f"Text Decoded: {qr_decoded} {qr_decoded_count} times")
-    print("TRACK IDS WITH QR DETECTIONS")
-    confidence_callback(track_id_qr_detection)
+    # print(f"Detected the QR code in {qr_count} out of {total_frames} frames ({float(qr_count / total_frames)}).")
+    # print(f"Text Decoded: {qr_decoded} {qr_decoded_count} times")
+    # print("TRACK IDS WITH QR DETECTIONS")
+    # confidence_callback(track_id_qr_detection)
     # print(track_id_qr_detection)
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()
     out.release()
     cap.release()
 

@@ -86,8 +86,8 @@ class QReaderdetector(QRdetector):
         return False
 
 
-def detect_qr_code(frame, bounding_box, qr_detector):
-    """This methods attempts to detect a QR code in an image. It takes in an
+def detect_qr_code(frame, bounding_box,qr_detector):
+    """This method attempts to detect a QR code in an image. It takes in an
        image (or video frame) and bounding box to search within. If a QR code
        is detecting, it will return the decoded text and the position of the
        center of the QR code. Otherwise it will return False.

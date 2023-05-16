@@ -1569,6 +1569,7 @@ class TrackingBboxQR(dj.Computed):
     def make(self, key):
         print(key)
         from pose_pipeline.utils.tracking import detect_qr_code, calculate_tracking_confidence
+        import pose_pipeline.utils.tracking as tracking
         from tqdm import tqdm
         import matplotlib
 
@@ -1595,6 +1596,17 @@ class TrackingBboxQR(dj.Computed):
         # configure output
         output_size = (int(w / downsample), int(h / downsample))
 
+
+        import ipywidgets as widgets
+        from IPython.display import display
+        owidth = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)/downsample)
+        oheight = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)/downsample)
+
+        canvas = widgets.Image(width=owidth, height=oheight)
+        container = widgets.HBox([canvas])
+
+        display(container)
+
         print("setting up")
         qr_count = 0
         qr_decoded_count = 0
@@ -1611,9 +1623,7 @@ class TrackingBboxQR(dj.Computed):
 
         track_id_per_frame = []
 
-        from qreader import QReader
-
-        qr_reader = QReader()
+        qr_reader = tracking.QReaderdetector()
 
         print("detecting qr")
 
@@ -1710,8 +1720,11 @@ class TrackingBboxQR(dj.Computed):
             out_frame = cv2.resize(out_image, output_size)
 
             if visualize:
-                cv2.imshow("image", out_frame)
-                cv2.waitKey(1)
+                #out_frame = cv2.resize(out_frame, (0,0), fx=1/downsample, fy=1/downsample)
+                ret, jpeg = cv2.imencode('.jpg', out_frame)
+                canvas.value = jpeg.tobytes()
+                #cv2.imshow("image", out_frame)
+                #cv2.waitKey(1)
 
         print(f"Detected the QR code in {qr_count} out of {total_frames} frames ({float(qr_count / total_frames)}).")
         print(f"Text Decoded: {qr_decoded} {qr_decoded_count} times")
@@ -1728,3 +1741,16 @@ class TrackingBboxQR(dj.Computed):
 
         cv2.destroyAllWindows()
         cap.release()
+
+@schema
+class TrackingBboxQRMetrics(dj.Computed):
+    definition = """
+    -> TrackingBboxQR
+    ---
+    likely_tracks      : longblob
+    qr_detected_pct    : float
+    mota               : float
+    precision          : float
+    recall             : float
+    f1_score           : float
+    """
