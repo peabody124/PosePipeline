@@ -1,10 +1,13 @@
 import numpy as np
 import pandas as pd
 
-def compute_temporal_overlap(tracks,num_tracks):
+def compute_temporal_overlap(tracks,num_tracks,return_df=True):
     
     overlaps = np.zeros((num_tracks, num_tracks), dtype=int)
     track_id_counts = {}
+
+    zero_id_flag = False
+    offset = 1
 
     # Go through each frame
     for f in tracks:
@@ -13,6 +16,9 @@ def compute_temporal_overlap(tracks,num_tracks):
 
         # Keep a count of how often each track_id appears 
         for id in id_list:
+            if id == 0:
+                zero_id_flag = True
+                offset = 0
             if id in track_id_counts:
                 track_id_counts[id] += 1
             else:
@@ -21,18 +27,59 @@ def compute_temporal_overlap(tracks,num_tracks):
         # Keep a count of how often each track_id appears with every other track_id
         if len(id_list) == 1:
             track = id_list[0]
-            overlaps[track-1, track-1] += 1
+            overlaps[track-offset, track-offset] += 1
         else:
             for i in range(len(id_list)):
                 for j in range(i+1, len(id_list)): 
-                    overlaps[id_list[i] - 1, id_list[j] - 1] += 1
+                    overlaps[id_list[i] - offset, id_list[j] - offset] += 1
+                    overlaps[id_list[j] - offset, id_list[i] - offset] += 1
             
-    overlaps_df = pd.DataFrame(overlaps)
+    if return_df:
+        overlaps = pd.DataFrame(overlaps)
 
-    overlaps_df.index = range(1,num_tracks+1)
-    overlaps_df.columns = range(1,num_tracks+1)
+        if zero_id_flag:
+            min_index = 0
+            max_index = num_tracks
+
+        else:
+            min_index = 1
+            max_index = num_tracks + 1
+
+        overlaps.index = range(min_index,max_index)
+        overlaps.columns = range(min_index,max_index)
 
     return overlaps, track_id_counts
+
+def get_participant_frame_count(tracks,likely_ids):
+    # Check how many frames the likely IDs appeared in the video (based on the tracking algo)
+    track_ids_per_frame = get_ids_in_frame(tracks)
+
+    likely_ids_set = set(likely_ids)
+    participant_in_frame = 0 
+
+    # In each frame, see if a likely ID is present
+    for t_ids in track_ids_per_frame:
+        id_in_frame = set(t_ids) & likely_ids_set
+        
+        if len(id_in_frame) > 0:
+            participant_in_frame += 1
+
+    return participant_in_frame
+
+def get_likely_ids(detection_by_frame, decoding_by_frame,window_len=25):
+    # Get cumulative sums of detections and decodings
+    detection_sum = detection_by_frame.cumsum()
+    decoding_sum = decoding_by_frame.cumsum()
+
+    # take the sum of the cumulative sums over a sliding window 
+    sum_df = detection_sum.diff(periods=window_len) + decoding_sum.diff(periods=window_len)
+    # Find the id that is most likely the subject for each frame
+    sum_df['max'] = sum_df.idxmax(axis=1)
+    likely_ids = [int(id) for id in sum_df['max'].unique() if not np.isnan(id)]
+    all_detected_ids = detection_sum.tail(1).to_dict('records')[0]
+    all_decoded_ids = decoding_sum.tail(1).to_dict('records')[0]
+    
+    return likely_ids, all_detected_ids, all_decoded_ids
 
 
 def process_detections(qr_frame_data):

@@ -1733,6 +1733,7 @@ class TrackingBboxQR(dj.Computed):
         track_id_qr_detection["frame_data_dict"] = qr_info_list
         track_id_qr_detection["qr_counts"] = counts
         track_id_qr_detection["qr_bbox"] = qr_bbox
+        track_id_qr_detection["qr_decoded"] = qr_decoded
 
         # Save the QR information for the current video
         key["qr_results"] = track_id_qr_detection
@@ -1743,14 +1744,86 @@ class TrackingBboxQR(dj.Computed):
         cap.release()
 
 @schema
-class TrackingBboxQRMetrics(dj.Computed):
+class TrackingBboxQRWindowSelect(dj.Manual):
     definition = """
     -> TrackingBboxQR
-    ---
-    likely_tracks      : longblob
-    qr_detected_pct    : float
-    mota               : float
-    precision          : float
-    recall             : float
-    f1_score           : float
+    window_len              : int
     """
+
+@schema
+class TrackingBboxQRMetrics(dj.Computed):
+    definition = """
+    -> TrackingBboxQRWindowSelect
+    ---
+    total_frames            : int
+    likely_tracks           : longblob
+    qr_detected_frames      : int
+    qr_decoded_frames       : int
+    likely_id_overlap       : longblob
+    participant_frame_count : int
+    """
+
+    def make(self, key):
+        # Key will have video_project, filename, tracking_method AND window_len
+        # window_len is size of sliding window used to calculate the likely ids
+        print(key)
+        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_detections, process_decodings, get_likely_ids, get_participant_frame_count
+
+        window_len = key['window_len']
+
+        # Get qr data for current video
+        tracking_method, qr_results = (TrackingBboxQR & key).fetch1('tracking_method','qr_results')
+        # Get tracks data for current video
+        tracks, num_tracks = (TrackingBbox & key ).fetch1('tracks','num_tracks')
+
+        # Extract frame QR data for current video
+        frame_data_tmp = qr_results['frame_data_dict']
+        frame_data = pd.DataFrame(frame_data_tmp)
+
+        total_frames = len(frame_data)
+
+        # Calculate frame overlap and counts for each track ID based on tracks data
+        overlaps, track_id_counts = compute_temporal_overlap(tracks,num_tracks)
+
+        # Get the number of detections and decodings
+        detection_by_frame = process_detections(frame_data)
+        decoding_by_frame = process_decodings(frame_data) 
+
+        qr_detections = len(detection_by_frame)
+        qr_decodings = len(decoding_by_frame[(decoding_by_frame.T != 0).any()])
+
+        print("Total frames: ",total_frames)
+        print(f"Frames with detections: {qr_detections} ({qr_detections/total_frames})")
+        print(f"Frames with decoding: {qr_decodings} ({qr_decodings/total_frames})")
+
+        # Find IDs that are most likely to correspond to the participant 
+        likely_ids, all_detected_ids, all_decoded_ids = get_likely_ids(detection_by_frame, decoding_by_frame,window_len)
+
+        print(f"Likely Participant ID(s): {likely_ids}")
+
+        # Check if the likely IDs appear in the frame together. If they do then probably ID swap, otherwise, relabeling
+        temporal_overlap = {}
+        for i in range(len(likely_ids)):
+            for j in range(i+1, len(likely_ids)): 
+                likely_id_a = likely_ids[i]
+                likely_id_b = likely_ids[j]
+                print(f"Temporal overlap between track IDs {likely_id_a} and {likely_id_b}: {overlaps.loc[likely_id_a,likely_id_b]} frames")
+                temporal_overlap[f'[{likely_id_a},{likely_id_b}]'] = overlaps.loc[likely_id_a,likely_id_b]
+
+        # Check how many frames the likely IDs appeared in the video (based on the tracking algo)
+        participant_in_frame = get_participant_frame_count(tracks,likely_ids)
+
+        print(f"Frames with participant (from tracks): {participant_in_frame} ({participant_in_frame/total_frames})")
+
+        # Save the QR information for the current video
+        key["total_frames"]            = total_frames
+        # key["window_len"]              = window_len
+        key["likely_tracks"]           = likely_ids
+        key["qr_detected_frames"]      = qr_detections
+        key["qr_decoded_frames"]       = qr_decodings
+        key["likely_id_overlap"]       = temporal_overlap
+        key["participant_frame_count"] = participant_in_frame
+
+        self.insert1(key)
+
+
