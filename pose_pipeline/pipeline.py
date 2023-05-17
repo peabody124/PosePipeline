@@ -1573,16 +1573,26 @@ class TrackingBboxQR(dj.Computed):
         from tqdm import tqdm
         import matplotlib
 
+        import subprocess
+        import os
+        def compress(video):
+            fd, outfile = tempfile.mkstemp(suffix=".mp4")
+            subprocess.run(["ffmpeg", "-y", "-i", video, "-c:v", "libx264","-loglevel", "warning", "-b:v", "1M", outfile])
+            os.close(fd)
+            return outfile
+
         # Fetch the video and tracks from the respective tables
         video = (Video & key).fetch1("video")
         tracks = (TrackingBbox & key).fetch1("tracks")
+
+        compressed_video = compress(video)
 
         # Get the number of unique track IDs and generate colors for each
         N = len(np.unique([t["track_id"] for track in tracks for t in track]))
         colors = matplotlib.cm.get_cmap("hsv", lut=N)
 
         # Create OpenCV video capture object to go through each frame
-        cap = cv2.VideoCapture(video)
+        cap = cv2.VideoCapture(compressed_video)
 
         # get video info (total frames, frame height/width, frames per second)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -1627,7 +1637,7 @@ class TrackingBboxQR(dj.Computed):
 
         print("detecting qr")
 
-        for idx in tqdm(range(total_frames)):
+        for idx in tqdm(range(len(tracks))):
 
             ret, frame = cap.read()
             if not ret or frame is None:
@@ -1737,7 +1747,6 @@ class TrackingBboxQR(dj.Computed):
 
         # Save the QR information for the current video
         key["qr_results"] = track_id_qr_detection
-        print(key)
         self.insert1(key)
 
         cv2.destroyAllWindows()
@@ -1767,7 +1776,7 @@ class TrackingBboxQRMetrics(dj.Computed):
         # Key will have video_project, filename, tracking_method AND window_len
         # window_len is size of sliding window used to calculate the likely ids
         print(key)
-        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_detections, process_decodings, get_likely_ids, get_participant_frame_count
+        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_detections, process_decodings, get_likely_ids, get_participant_frame_count, get_unique_ids, get_ids_in_frame
 
         window_len = key['window_len']
 
@@ -1776,6 +1785,10 @@ class TrackingBboxQRMetrics(dj.Computed):
         # Get tracks data for current video
         tracks, num_tracks = (TrackingBbox & key ).fetch1('tracks','num_tracks')
 
+        # Get the unique track IDs that appear in the current video
+        all_track_ids = get_ids_in_frame(tracks)
+        unique_ids = get_unique_ids(all_track_ids)
+
         # Extract frame QR data for current video
         frame_data_tmp = qr_results['frame_data_dict']
         frame_data = pd.DataFrame(frame_data_tmp)
@@ -1783,7 +1796,7 @@ class TrackingBboxQRMetrics(dj.Computed):
         total_frames = len(frame_data)
 
         # Calculate frame overlap and counts for each track ID based on tracks data
-        overlaps, track_id_counts = compute_temporal_overlap(tracks,num_tracks)
+        overlaps, track_id_counts = compute_temporal_overlap(tracks,unique_ids)
 
         # Get the number of detections and decodings
         detection_by_frame = process_detections(frame_data)

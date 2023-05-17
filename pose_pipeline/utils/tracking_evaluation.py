@@ -1,13 +1,16 @@
 import numpy as np
 import pandas as pd
 
-def compute_temporal_overlap(tracks,num_tracks,return_df=True):
+def compute_temporal_overlap(tracks,unique_ids,return_df=True):
     
-    overlaps = np.zeros((num_tracks, num_tracks), dtype=int)
-    track_id_counts = {}
+    # Get the maximum track ID value
+    max_id = max(unique_ids)
+    num_tracks = max_id
 
-    zero_id_flag = False
-    offset = 1
+    # Initialize overlaps table that includes ids from 0 to max_id inclusive
+    overlaps = np.zeros((num_tracks+1, num_tracks+1), dtype=int)
+    print(overlaps.shape)
+    track_id_counts = {}
 
     # Go through each frame
     for f in tracks:
@@ -16,37 +19,28 @@ def compute_temporal_overlap(tracks,num_tracks,return_df=True):
 
         # Keep a count of how often each track_id appears 
         for id in id_list:
-            if id == 0:
-                zero_id_flag = True
-                offset = 0
+            # Initialize each id when it appears or add to the running total
+            # of how many frames each id appears in
             if id in track_id_counts:
                 track_id_counts[id] += 1
             else:
-                track_id_counts[id] = 0
+                track_id_counts[id] = 1
         
         # Keep a count of how often each track_id appears with every other track_id
         if len(id_list) == 1:
             track = id_list[0]
-            overlaps[track-offset, track-offset] += 1
+            overlaps[track, track] += 1
         else:
             for i in range(len(id_list)):
                 for j in range(i+1, len(id_list)): 
-                    overlaps[id_list[i] - offset, id_list[j] - offset] += 1
-                    overlaps[id_list[j] - offset, id_list[i] - offset] += 1
+                    overlaps[id_list[i], id_list[j]] += 1
+                    overlaps[id_list[j], id_list[i]] += 1
             
     if return_df:
         overlaps = pd.DataFrame(overlaps)
 
-        if zero_id_flag:
-            min_index = 0
-            max_index = num_tracks
-
-        else:
-            min_index = 1
-            max_index = num_tracks + 1
-
-        overlaps.index = range(min_index,max_index)
-        overlaps.columns = range(min_index,max_index)
+        overlaps.index = range(max_id+1)
+        overlaps.columns = range(max_id+1)
 
     return overlaps, track_id_counts
 
@@ -138,6 +132,11 @@ def process_decodings(qr_frame_data):
     decoding_percentage = decoding_sum.divide(decoding_sum.index,axis=0)
 
     return frame_df_decoding    
+
+def get_unique_ids(ids_by_frame):
+    unique_ids = {id for frame in ids_by_frame for id in frame}
+
+    return unique_ids
 
 def get_ids_in_frame(tracks):
     """This method creates a list of the track ids present in each frame of a 
