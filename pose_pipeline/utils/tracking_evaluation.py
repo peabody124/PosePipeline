@@ -75,6 +75,65 @@ def get_likely_ids(detection_by_frame, decoding_by_frame,window_len=25):
     
     return likely_ids, all_detected_ids, all_decoded_ids
 
+def compute_splits(unique_ids, all_track_ids, missing_frames_allowed):
+    splits = {id:0 for id in unique_ids}
+    consecutive_frames_cnt = {id:0 for id in unique_ids}
+    missing_frames_cnt = {id:0 for id in unique_ids}
+    consecutive_frame_list = {id:[] for id in unique_ids}
+    start_index = {id:0 for id in unique_ids}
+    stop_index = {id:-1 for id in unique_ids}
+
+    total_tracks = len(all_track_ids)
+
+    # Iterate through the ids present in each frame
+    for i,id_list in enumerate(all_track_ids):
+        
+        # Of all unique IDs present in the video,
+        # look at the ones not currently in the frame 
+        for missing_id in (unique_ids - set(id_list)):
+            # If these IDs have appeared in at least 1 frame previously
+            if consecutive_frames_cnt[missing_id] > 0:
+                # Set the number of consecutive frames to 0 (since it is 
+                # not in the current frame)
+                consecutive_frames_cnt[missing_id] = 0
+                # Save the indices of the start and end frames that the 
+                # id showed up in consecutively
+                stop_index[missing_id] = i-1
+                consecutive_frame_list[missing_id].append([start_index[missing_id],stop_index[missing_id]])
+                # Reset the start index
+                start_index[missing_id] = 0
+            if stop_index[missing_id] != -1:
+                # Increment the 'missing' count for the current ID
+                missing_frames_cnt[missing_id] += 1
+        
+        # Look at the IDs present in the frame
+        for present_id in id_list:
+            # If the current ID in frame was previously missing for more
+            # than 'missing_frames_allowed' add one to the number of splits
+            # for that ID
+            if missing_frames_cnt[present_id] > missing_frames_allowed:
+                splits[present_id] += 1
+            
+            # If the number of consecutive frames for the current ID is 0
+            # then the current index is the new starting index (since it 
+            # is now in frame)
+            if consecutive_frames_cnt[present_id] == 0:
+                start_index[present_id] = i
+            
+            # Increment the number of consecutive frames the current ID has appeared in
+            consecutive_frames_cnt[present_id] += 1
+            # Reset the 'missing' count for the current ID
+            missing_frames_cnt[present_id] = 0
+
+    # Go through track IDs present at the end of the video and append the first frame of
+    # their appearance and the final frame index to the consecutive frame list        
+    for track_id in consecutive_frame_list:
+        
+        if consecutive_frame_list[track_id] == []:
+            consecutive_frame_list[track_id].append([start_index[track_id],total_tracks-1])
+
+    return splits, consecutive_frame_list
+
 
 def process_detections(qr_frame_data):
 
