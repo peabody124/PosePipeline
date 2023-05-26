@@ -66,13 +66,50 @@ def get_likely_ids(detection_by_frame, decoding_by_frame,window_len=25):
     detection_sum = detection_by_frame.cumsum()
     decoding_sum = decoding_by_frame.cumsum()
 
-    # take the sum of the cumulative sums over a sliding window 
-    sum_df = detection_sum.diff(periods=window_len) + decoding_sum.diff(periods=window_len)
-    # Find the id that is most likely the subject for each frame
-    sum_df['max'] = sum_df.idxmax(axis=1)
-    likely_ids = [int(id) for id in sum_df['max'].unique() if not np.isnan(id)]
+    # Get the number of detections and decodings for each ID
     all_detected_ids = detection_sum.tail(1).to_dict('records')[0]
     all_decoded_ids = decoding_sum.tail(1).to_dict('records')[0]
+
+    # Get the total number of detections
+    total_detection_frames = len(detection_by_frame)
+
+    # take the sum of the cumulative sums over a sliding window 
+    sum_df = detection_sum.diff(periods=window_len) + decoding_sum.diff(periods=window_len)
+
+    # Get the track ids that have detections
+    track_ids = sum_df.columns.values
+    # Use a mask to find which IDs have detections in each frame
+    # if the value of a column is greater than 0 then there was a
+    # detection
+    mask = sum_df.gt(0.0).values
+    tentative_likely_ids = [track_ids[id].tolist() for id in mask]
+
+    # Calculate the percentage of detections and decodings
+    # Calculated as (number of detections per ID)/(total detections)
+    # and           (number of decodings per ID)/(total detections)     
+    pct_frame_detections = {}
+    pct_frame_decoding = {}
+    total_detection_frames = len(detection_by_frame)
+    for i in track_ids:
+        pct_frame_detections[i] = all_detected_ids[i]/total_detection_frames
+        pct_frame_decoding[i] = all_decoded_ids[i]/total_detection_frames
+
+    # Create a column which holds IDs that tentatively belong to the participant
+    sum_df['tentative_likely_ids'] = tentative_likely_ids
+    # Get the % of detections and decodings for the tentative IDs in each frame
+    pct_detections = [[pct_frame_detections[id] for id in ids] for ids in tentative_likely_ids]
+    pct_decoding = [[pct_frame_decoding[id] for id in ids] for ids in tentative_likely_ids]
+    sum_df['id_pct_detection'] = pct_detections
+
+    # Find the id that is most likely the subject for each frame
+    # For each frame, check the % detections for each tentative likely ID
+    # The tentative ID that has the highest % detection is most likely
+    # the subject in each frame
+    likely_id_list = [tentative_likely_ids[i][np.argmax(pct_detections[i])] if tentative_likely_ids[i] else np.nan for i in range(len(tentative_likely_ids)) ]
+    sum_df['likely_ids'] = likely_id_list
+
+    # Get all unique likely IDs for entire video
+    likely_ids = [int(id) for id in sum_df['likely_ids'].unique() if not np.isnan(id)]
     
     return likely_ids, all_detected_ids, all_decoded_ids
 
