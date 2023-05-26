@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from pose_pipeline.utils.keypoint_matching import compute_iou
 
 def compute_temporal_overlap(tracks,unique_ids,return_df=True):
     
@@ -134,6 +135,55 @@ def compute_splits(unique_ids, all_track_ids, missing_frames_allowed):
 
     return splits, consecutive_frame_list
 
+def compute_cumulative_iou(likely_ids, bboxes_in_frame, all_track_ids):
+
+    num_likely_ids = len(likely_ids)
+    
+    # Initialize spatial overlaps table that includes ids from 0 to max_id inclusive
+    iou_table = np.zeros((num_likely_ids, num_likely_ids))
+
+    # Create a mapping dictionary for easy indexing
+    mapping_table = {id: index for index, id in enumerate(likely_ids)}
+
+    likely_ids_set = set(likely_ids)
+
+    for i in range(len(bboxes_in_frame)):
+        # Make sure at least 2 of the likely ids are in the frame
+        likely_ids_in_frame = list(set(all_track_ids[i]) & likely_ids_set)
+        num_likely_ids_in_frame = len(likely_ids_in_frame)
+        
+        if num_likely_ids_in_frame > 1:
+            # Get the bboxes for the likely ids
+            for id1 in range(num_likely_ids_in_frame):
+                
+                # Get the first likely id in frame
+                # and the index it should be mapped to for the 
+                # output table
+                id_idx1 = likely_ids_in_frame[id1]
+                mapped_idx1 = mapping_table[id_idx1]
+                
+                # get the bbox for the first id
+                bbox_id1 = bboxes_in_frame[i][id_idx1]
+
+                for id2 in range(id1+1,num_likely_ids_in_frame):
+                    # Get the second likely id in frame
+                    # and the index it should be mapped to for the 
+                    # output table
+                    id_idx2 = likely_ids_in_frame[id2]
+                    mapped_idx2 = mapping_table[id_idx2]
+                    
+                    # get the bbox for the second id
+                    bbox_id2 = bboxes_in_frame[i][id_idx2]
+                    
+                    # Calculate the IoU for the 2 current IDs
+                    iou = compute_iou(np.array([bbox_id1]),np.array([bbox_id2]))
+
+                    # Update the running sum in the IoU table
+                    iou_table[mapped_idx1, mapped_idx2] += iou
+                    iou_table[mapped_idx2, mapped_idx1] += iou
+
+    return iou_table
+
 
 def process_detections(qr_frame_data):
 
@@ -231,6 +281,12 @@ def get_detections_in_frame(qr_frame_data):
     ids_detected_in_frame = [list(f.keys()) for f in qr_frame_data]
 
     return ids_detected_in_frame
+
+def get_bboxes_in_frame(tracks):
+
+    bboxes_in_frame = [{t['track_id']:t['tlhw'] for t in track_list} for track_list in tracks]
+
+    return bboxes_in_frame
 
 
 def compute_classification_metrics(ids_in_frame,detections_in_frame,likely_ids):

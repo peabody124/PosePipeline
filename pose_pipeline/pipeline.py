@@ -1793,7 +1793,7 @@ class TrackingBboxQRMetrics(dj.Computed):
         frame_data_tmp = qr_results['frame_data_dict']
         frame_data = pd.DataFrame(frame_data_tmp)
 
-        total_frames = len(frame_data)
+        total_frames = len(tracks)
 
         # Calculate frame overlap and counts for each track ID based on tracks data
         overlaps, track_id_counts = compute_temporal_overlap(tracks,unique_ids)
@@ -1815,13 +1815,14 @@ class TrackingBboxQRMetrics(dj.Computed):
         print(f"Likely Participant ID(s): {likely_ids}")
 
         # Check if the likely IDs appear in the frame together. If they do then probably ID swap, otherwise, relabeling
-        temporal_overlap = {}
+        
+        temporal_overlap = overlaps.loc[likely_ids,likely_ids]
+
         for i in range(len(likely_ids)):
             for j in range(i+1, len(likely_ids)): 
                 likely_id_a = likely_ids[i]
                 likely_id_b = likely_ids[j]
-                print(f"Temporal overlap between track IDs {likely_id_a} and {likely_id_b}: {overlaps.loc[likely_id_a,likely_id_b]} frames")
-                temporal_overlap[f'[{likely_id_a},{likely_id_b}]'] = overlaps.loc[likely_id_a,likely_id_b]
+                print(f"Temporal overlap between track IDs {likely_id_a} and {likely_id_b}: {temporal_overlap.loc[likely_id_a,likely_id_b]} frames")
 
         # Check how many frames the likely IDs appeared in the video (based on the tracking algo)
         participant_in_frame = get_participant_frame_count(tracks,likely_ids)
@@ -1834,9 +1835,46 @@ class TrackingBboxQRMetrics(dj.Computed):
         key["likely_tracks"]           = likely_ids
         key["qr_detected_frames"]      = qr_detections
         key["qr_decoded_frames"]       = qr_decodings
-        key["likely_id_overlap"]       = temporal_overlap
+        key["likely_id_overlap"]       = temporal_overlap.values
         key["participant_frame_count"] = participant_in_frame
 
         self.insert1(key)
 
 
+@schema
+class TrackingBboxQRSplitSelect(dj.Manual):
+    definition = """
+    -> TrackingBboxQRMetrics
+    missing_frame_threshold : int
+    """
+
+@schema
+class TrackingBboxQRSplits(dj.Computed):
+    definition = """
+    -> TrackingBboxQRSplitSelect
+    ---
+    num_splits              : longblob
+    splits_frequency        : longblob
+    consecutive_frames      : longblob
+    """
+
+    def make(self, key):
+        # Key will have video_project, filename, tracking_method, window_len, and missing_frames_threshold
+        # missing_frames_threshold is number of frames that a track can be missing from a video before it counts as a split
+        print(key)
+        from pose_pipeline.utils.tracking_evaluation import compute_splits, get_unique_ids, get_ids_in_frame
+
+        missing_frame_threshold = key['missing_frame_threshold']
+
+        # Get tracks data for current video
+        tracks, num_tracks = (TrackingBbox & key ).fetch1('tracks','num_tracks')
+        likely_ids = (TrackingBboxQRMetrics & key).fetch1('likely_ids')
+
+        # Get the unique track IDs that appear in the current video
+        all_track_ids = get_ids_in_frame(tracks)
+        unique_ids = get_unique_ids(all_track_ids)
+
+        splits, consecutive_frame_list = compute_splits(unique_ids, all_track_ids, missing_frame_threshold)
+
+        # Get the splits and consecutive frame lists for the likely IDs
+        
