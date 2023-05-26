@@ -221,6 +221,78 @@ def compute_cumulative_iou(likely_ids, bboxes_in_frame, all_track_ids):
 
     return iou_table
 
+def determine_id_swaps(detection_by_frame, likely_id_by_frame,):
+    frame_data_detections = detection_by_frame.values
+    detection_id_list = np.array(detection_by_frame.columns)
+    # likely_id_by_frame = sum_df['max'].values
+    likely_id_by_frame = new_sum_df['likely_ids'].values
+
+
+    all_track_ids_per_frame = np.array(all_track_ids,dtype=object)[sum_df.index]
+    all_track_ids_with_detection = new_sum_df['tentative_likely_ids'].values
+    bboxes_in_frame_for_detection = np.array(bboxes_in_frame,dtype=object)[new_sum_df.index]
+
+    iou_threshold = 0.1
+
+    likely_ids_set = set(likely_ids)
+
+    likely_set = set()
+
+    iou_array = np.zeros(len(frame_data_detections))
+    spatial_overlap = np.zeros(len(frame_data_detections))
+    id_swap = np.zeros(len(frame_data_detections))
+    relabeling = np.zeros(len(frame_data_detections))
+
+    for n,frame in enumerate(frame_data_detections):
+        # print(frame)
+        if not np.isnan(likely_id_by_frame[n]):
+            # Get all IDs present in the current frame
+            all_ids_in_frame = all_track_ids_per_frame[n]
+            # Get the IDs that have detections in the current frame
+            ids_in_frame_with_det = all_track_ids_with_detection[n]
+            
+            # Get the likely id from the previous frame
+            prev_id = likely_id_by_frame[n-1]
+            current_id = likely_id_by_frame[n]
+            
+            # Keep track of likely IDs encountered
+            likely_set.add(current_id)
+            
+            # print(n,prev_id,current_id,ids_in_frame)
+            # See if the IDs are the same
+            if prev_id != current_id:
+                # If not, check if the current ID has a detection in the current frame
+                # and the previous ID is still in frame
+                if prev_id in ids_in_frame_with_det and current_id in ids_in_frame_with_det:
+                    # If they are both in frame, check the IoU
+                    bbox1 = bboxes_in_frame_for_detection[n][prev_id]
+                    bbox2 = bboxes_in_frame_for_detection[n][current_id]
+
+                    iou = compute_iou(np.array([bbox1]),np.array([bbox2]))
+
+                    iou_array[n] = iou[0]
+                    # If the IoU is higher than the threshold, then it is likely
+                    # just overlapping bboxes
+                    if iou[0] > iou_threshold:
+                        spatial_overlap[n] = 1
+                    else:
+                        # If the IoU is low then it is likely an ID swap
+                        id_swap[n] = 1
+
+                # If any of the IDs in the frame currently were previously 
+                # thought to be the participant, then it is likey an ID swap   
+                # May need to change this to > 1     
+                if len(likely_set & set(all_ids_in_frame)) > 0:
+                    
+                    if not np.isnan(likely_id_by_frame[n-1]):
+                        id_swap[n] = 1
+                        
+                else:
+                    # if both are not in frame, then relabeling
+                    # relabeling += 1  
+                    if not np.isnan(likely_id_by_frame[n-1]):
+                        relabeling[n] = 1
+
 
 def process_detections(qr_frame_data):
 
