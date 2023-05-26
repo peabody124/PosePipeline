@@ -232,9 +232,7 @@ def determine_id_swaps(detection_by_frame, likely_id_by_frame,):
     all_track_ids_with_detection = new_sum_df['tentative_likely_ids'].values
     bboxes_in_frame_for_detection = np.array(bboxes_in_frame,dtype=object)[new_sum_df.index]
 
-    iou_threshold = 0.1
-
-    likely_ids_set = set(likely_ids)
+    iou_threshold = 0.25
 
     likely_set = set()
 
@@ -257,13 +255,15 @@ def determine_id_swaps(detection_by_frame, likely_id_by_frame,):
             
             # Keep track of likely IDs encountered
             likely_set.add(current_id)
+
+            allowed_to_be_in_frame = 1
             
-            # print(n,prev_id,current_id,ids_in_frame)
-            # See if the IDs are the same
+            # See if the previous and current likely IDs are the same
             if prev_id != current_id:
                 # If not, check if the current ID has a detection in the current frame
                 # and the previous ID is still in frame
-                if prev_id in ids_in_frame_with_det and current_id in ids_in_frame_with_det:
+                if prev_id in all_ids_in_frame:
+                    allowed_to_be_in_frame += 1
                     # If they are both in frame, check the IoU
                     bbox1 = bboxes_in_frame_for_detection[n][prev_id]
                     bbox2 = bboxes_in_frame_for_detection[n][current_id]
@@ -279,17 +279,17 @@ def determine_id_swaps(detection_by_frame, likely_id_by_frame,):
                         # If the IoU is low then it is likely an ID swap
                         id_swap[n] = 1
 
-                # If any of the IDs in the frame currently were previously 
-                # thought to be the participant, then it is likey an ID swap   
-                # May need to change this to > 1     
-                if len(likely_set & set(all_ids_in_frame)) > 0:
+                # Check if there are any likely IDs that are in the frame 
+                # (besides current and prev if still in frame) if so, then 
+                # likely an ID swap    
+                if len(likely_set & set(all_ids_in_frame)) > allowed_to_be_in_frame:
                     
                     if not np.isnan(likely_id_by_frame[n-1]):
                         id_swap[n] = 1
                         
                 else:
-                    # if both are not in frame, then relabeling
-                    # relabeling += 1  
+                    # if none of the previous likely IDs are in frame, then
+                    # relabeling 
                     if not np.isnan(likely_id_by_frame[n-1]):
                         relabeling[n] = 1
 
