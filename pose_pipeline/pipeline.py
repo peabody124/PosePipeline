@@ -1764,12 +1764,13 @@ class TrackingBboxQRMetrics(dj.Computed):
     definition = """
     -> TrackingBboxQRWindowSelect
     ---
-    total_frames            : int
-    likely_tracks           : longblob
-    qr_detected_frames      : int
-    qr_decoded_frames       : int
-    likely_id_overlap       : longblob
-    participant_frame_count : int
+    total_frames                  : int
+    likely_tracks                 : longblob
+    qr_detected_frames            : int
+    qr_decoded_frames             : int
+    likely_id_overlap             : longblob
+    participant_frame_count       : int
+    qr_calculated_frame_metrics   : longblob
     """
 
     def make(self, key):
@@ -1779,6 +1780,7 @@ class TrackingBboxQRMetrics(dj.Computed):
         from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_detections, process_decodings, get_likely_ids, get_participant_frame_count, get_unique_ids, get_ids_in_frame
 
         window_len = key['window_len']
+        qr_calculated_frame_metrics = {}
 
         # Get qr data for current video
         tracking_method, qr_results = (TrackingBboxQR & key).fetch1('tracking_method','qr_results')
@@ -1809,57 +1811,82 @@ class TrackingBboxQRMetrics(dj.Computed):
         print(f"Frames with detections: {qr_detections} ({qr_detections/total_frames})")
         print(f"Frames with decoding: {qr_decodings} ({qr_decodings/total_frames})")
 
-        # Find IDs that are most likely to correspond to the participant 
-        likely_ids, all_detected_ids, all_decoded_ids = get_likely_ids(detection_by_frame, decoding_by_frame,window_len)
-
-        print(f"Likely Participant ID(s): {likely_ids}")
-
-        # Check if the likely IDs appear in the frame together. If they do then probably ID swap, otherwise, relabeling
+        if len(detection_by_frame) > 1:
         
-        temporal_overlap = overlaps.loc[likely_ids,likely_ids]
+            # If the window length is larger than the number of detections then use 1 instead
+            if len(detection_by_frame) < window_len:
+                window_len = 1
 
-        for i in range(len(likely_ids)):
-            for j in range(i+1, len(likely_ids)): 
-                likely_id_a = likely_ids[i]
-                likely_id_b = likely_ids[j]
-                print(f"Temporal overlap between track IDs {likely_id_a} and {likely_id_b}: {temporal_overlap.loc[likely_id_a,likely_id_b]} frames")
+        
+            # Find IDs that are most likely to correspond to the participant 
+            likely_ids, likely_ids_df, all_detected_ids, all_decoded_ids = get_likely_ids(detection_by_frame, decoding_by_frame,window_len)
 
-        # Check how many frames the likely IDs appeared in the video (based on the tracking algo)
-        participant_in_frame = get_participant_frame_count(tracks,likely_ids)
+            qr_calculated_frame_metrics['likely_ids_by_frame'] = likely_ids_df['likely_ids'].values
+            qr_calculated_frame_metrics['ids_with_det_by_frame'] = likely_ids_df['tentative_likely_ids'].values
+            qr_calculated_frame_metrics['frame_idx_with_det'] = np.array(likely_ids_df.index)
+            qr_calculated_frame_metrics['detection_by_frame'] = detection_by_frame.values
+            qr_calculated_frame_metrics['decoding_by_frame'] = decoding_by_frame.values
 
-        print(f"Frames with participant (from tracks): {participant_in_frame} ({participant_in_frame/total_frames})")
+            print(qr_calculated_frame_metrics)
+
+            print(f"Likely Participant ID(s): {likely_ids}")
+
+            # Check if the likely IDs appear in the frame together. If they do then probably ID swap, otherwise, relabeling
+            
+            temporal_overlap = overlaps.loc[likely_ids,likely_ids]
+
+            for i in range(len(likely_ids)):
+                for j in range(i+1, len(likely_ids)): 
+                    likely_id_a = likely_ids[i]
+                    likely_id_b = likely_ids[j]
+                    print(f"Temporal overlap between track IDs {likely_id_a} and {likely_id_b}: {temporal_overlap.loc[likely_id_a,likely_id_b]} frames")
+
+            likely_id_overlap = temporal_overlap.values
+
+            # Check how many frames the likely IDs appeared in the video (based on the tracking algo)
+            participant_in_frame = get_participant_frame_count(tracks,likely_ids)
+
+            print(f"Frames with participant (from tracks): {participant_in_frame} ({participant_in_frame/total_frames})")
+
+        else:
+            likely_ids = []
+            qr_calculated_frame_metrics = {}
+            likely_id_overlap = []
+            participant_in_frame = 0
 
         # Save the QR information for the current video
         key["total_frames"]            = total_frames
-        # key["window_len"]              = window_len
         key["likely_tracks"]           = likely_ids
         key["qr_detected_frames"]      = qr_detections
         key["qr_decoded_frames"]       = qr_decodings
-        key["likely_id_overlap"]       = temporal_overlap.values
+        key["likely_id_overlap"]       = likely_id_overlap
         key["participant_frame_count"] = participant_in_frame
+        key["qr_calculated_frame_metrics"] = qr_calculated_frame_metrics
 
         self.insert1(key)
 
 
 @schema
-class TrackingBboxQRSplitSelect(dj.Manual):
+class TrackingBboxSplitSelect(dj.Manual):
     definition = """
     -> TrackingBboxQRMetrics
     missing_frame_threshold : int
     """
 
 @schema
-class TrackingBboxQRSplits(dj.Computed):
+class TrackingBboxSplits(dj.Computed):
     definition = """
-    -> TrackingBboxQRSplitSelect
+    -> TrackingBboxSplitSelect
     ---
-    num_splits              : longblob
+    total_split_sum         : int
+    total_split_frequency   : float
+    splits_by_id            : longblob
     splits_frequency        : longblob
     consecutive_frames      : longblob
     """
 
     def make(self, key):
-        # Key will have video_project, filename, tracking_method, window_len, and missing_frames_threshold
+        # Key will have video_project, filename, tracking_method, and missing_frames_threshold
         # missing_frames_threshold is number of frames that a track can be missing from a video before it counts as a split
         print(key)
         from pose_pipeline.utils.tracking_evaluation import compute_splits, get_unique_ids, get_ids_in_frame
@@ -1867,14 +1894,112 @@ class TrackingBboxQRSplits(dj.Computed):
         missing_frame_threshold = key['missing_frame_threshold']
 
         # Get tracks data for current video
-        tracks, num_tracks = (TrackingBbox & key ).fetch1('tracks','num_tracks')
-        likely_ids = (TrackingBboxQRMetrics & key).fetch1('likely_ids')
+        tracks = (TrackingBbox & key ).fetch1('tracks')
+        likely_tracks = (TrackingBboxQRMetrics & key).fetch1('likely_tracks')
 
         # Get the unique track IDs that appear in the current video
         all_track_ids = get_ids_in_frame(tracks)
         unique_ids = get_unique_ids(all_track_ids)
 
+        # Get the splits and consecutive frame lists
         splits, consecutive_frame_list = compute_splits(unique_ids, all_track_ids, missing_frame_threshold)
 
-        # Get the splits and consecutive frame lists for the likely IDs
+        # Get split sum and frequency for likely tracks
+        likely_track_splits = [splits[s] for s in likely_tracks]
+        total_split_sum = sum(likely_track_splits)
+
+        # To calculate frequency, get overall splits per minute for the likely tracks ((total_splits/total_frames)*fps*60)
+        total_split_frequency = float(total_split_sum)/len(tracks) * 30 * 60
+
+        # Calculating splits per minute by ID
+        split_frequency = {}
+        for id in splits:
+            # Calculate the total number of frames the id appeared
+            id_frame_total = 0.
+            for frames in consecutive_frame_list[id]:
+                # Summing each consecutive window for each ID (+1 since frames saved are inclusive ranges)
+                id_frame_total += (frames[1] - frames[0]) + 1
+
+            split_frequency[id] = (splits[id]/id_frame_total) * 30 * 60
+
         
+        # Save the splits information for the current video
+        key["total_split_sum"]          = total_split_sum
+        key["total_split_frequency"]    = total_split_frequency
+        key["splits_by_id"]             = splits
+        key["splits_frequency"]          = split_frequency
+        key["consecutive_frames"]       = consecutive_frame_list
+
+        self.insert1(key)
+
+
+@schema
+class TrackingBboxIOUThreshold(dj.Manual):
+    definition = """
+    -> TrackingBboxQRMetrics
+    iou_threshold : decimal(5,5)
+    """
+
+
+@schema
+class TrackingBboxSwaps(dj.Computed):
+    definition = """
+    -> TrackingBboxIOUThreshold
+    ---
+    total_id_swaps              : int
+    id_swap_frequency           : float
+    total_spatial_overlaps      : int
+    spatial_overlap_frequency   : float
+    total_relabels              : int
+    relabel_frequency           : float
+    """
+
+    def make(self, key):
+        # Key will have video_project, filename, tracking_method, window_len, and iou_threshold
+        # iou_threshold is the IOU value below which is considered an ID swap. Above is just a spatial overlap
+        print(key)
+        from pose_pipeline.utils.tracking_evaluation import get_ids_in_frame, get_bboxes_in_frame, determine_id_swaps
+
+        iou_threshold = key['iou_threshold']
+
+        # Get tracks data for current video
+        tracks = (TrackingBbox & key ).fetch1('tracks')
+        # Get calculated metrics
+        qr_calculated_frame_metrics = (TrackingBboxQRMetrics & key).fetch1('qr_calculated_frame_metrics')
+
+        if qr_calculated_frame_metrics != {}:
+            likely_ids_by_frame    = qr_calculated_frame_metrics['likely_ids_by_frame']
+            ids_with_det_by_frame  = qr_calculated_frame_metrics['ids_with_det_by_frame']
+            frame_idx_with_det     = qr_calculated_frame_metrics['frame_idx_with_det']
+            detection_by_frame     = qr_calculated_frame_metrics['detection_by_frame']
+
+            # Get the unique track IDs that appear in the current video
+            all_track_ids = get_ids_in_frame(tracks)
+
+            # Get all bboxes that appear in the video
+            bboxes_in_frame = get_bboxes_in_frame(tracks)
+
+            iou_array, spatial_overlap, id_swap, relabeling = determine_id_swaps(detection_by_frame, likely_ids_by_frame, all_track_ids, frame_idx_with_det, ids_with_det_by_frame, bboxes_in_frame, iou_threshold)
+            
+            spatial_overlap_sum = sum(spatial_overlap)
+            id_swap_sum = sum(id_swap)
+            relabeling_sum = sum(relabeling)
+
+            spatial_overlap_freq = spatial_overlap_sum/len(tracks) * 30. * 60.
+            id_swap_freq = id_swap_sum/len(tracks) * 30. * 60.
+            relabeling_freq = relabeling_sum/len(tracks) * 30. * 60.
+
+            print("Relabeling: ",relabeling_sum,relabeling_freq)
+            print("ID Swap: ",id_swap_sum,id_swap_freq)
+            print("Spatial Overlap: ",spatial_overlap_sum,spatial_overlap_freq)
+
+
+            # Save the id swap information for the current video
+            key["total_id_swaps"]            = id_swap_sum
+            key["id_swap_frequency"]         = id_swap_freq
+            key["total_spatial_overlaps"]    = spatial_overlap_sum
+            key["spatial_overlap_frequency"] = spatial_overlap_freq
+            key["total_relabels"]            = relabeling_sum
+            key["relabel_frequency"]         = relabeling_freq
+
+            self.insert1(key)
