@@ -61,7 +61,7 @@ def get_participant_frame_count(tracks,likely_ids):
 
     return participant_in_frame
 
-def get_likely_ids(detection_by_frame, decoding_by_frame,window_len=25):
+def get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list, window_len=25):
     # Get cumulative sums of detections and decodings
     detection_sum = detection_by_frame.cumsum()
     decoding_sum = decoding_by_frame.cumsum()
@@ -75,6 +75,12 @@ def get_likely_ids(detection_by_frame, decoding_by_frame,window_len=25):
 
     # take the sum of the cumulative sums over a sliding window 
     sum_df = detection_sum.diff(periods=window_len) + decoding_sum.diff(periods=window_len)
+    qr_sum_list = sum_df.values
+    # Get the sum of frames thought to be each id
+    possible_df = sum_df.copy()
+
+    possible_df[:] = np.where(possible_df > 0,1,0)
+    thought_to_be_id = possible_df.cumsum().tail(1).to_dict('records')[0]
 
     # Get the track ids that have detections
     track_ids = sum_df.columns.values
@@ -106,12 +112,70 @@ def get_likely_ids(detection_by_frame, decoding_by_frame,window_len=25):
     # The tentative ID that has the highest % detection is most likely
     # the subject in each frame
     likely_id_list = [tentative_likely_ids[i][np.argmax(pct_detections[i])] if tentative_likely_ids[i] else np.nan for i in range(len(tentative_likely_ids)) ]
-    sum_df['likely_ids'] = likely_id_list
+    sum_df['likely_ids_old'] = likely_id_list
+
+    # Get all unique likely IDs for entire video
+    # likely_ids = [int(id) for id in sum_df['likely_ids'].unique() if not np.isnan(id)]
+
+
+    total_frames_id = {}
+    for id in consecutive_frame_list:
+        # Calculate the total number of frames the id appeared
+        total_frames_id[id] = 0.
+        for frames in consecutive_frame_list[id]:
+            total_frames_id[id] += (frames[1] - frames[0]) + 1
+
+
+    current_frame_count_id = {}
+    current_detection_count_id = {}
+    start_frame = {}
+    prob_ids = np.zeros(len(sum_df))
+    probability = np.zeros(len(sum_df))
+
+    for i,f in enumerate(sum_df.index):
+        
+        # i is the count in range(len(sum_df))
+        # f is the current index from sum_df
+
+        # Get the tentative likely ids for each frame
+        current_tentative_ids = tentative_likely_ids[i]
+
+        if current_tentative_ids:
+            prob_list = []
+            for t,tid in enumerate(current_tentative_ids):
+                if tid not in current_frame_count_id:
+                    current_detection_count_id[tid] = 1
+                    current_frame_count_id[tid] = 1
+                    start_frame[tid] = f
+
+                remaining_detections = thought_to_be_id[tid] - current_detection_count_id[tid]
+                remaining_frames = total_frames_id[tid] - i + start_frame[tid]
+                
+                current_detection_count_id[tid] += 1
+                # Detection ratio is the number of remaining detections for the id/number of frames the id will appear in
+                detection_ratio = remaining_detections/remaining_frames
+                # frame_ratio = all_detected_ids[tid]/total_frames_id[tid]
+                # the prob is the detection ratio * (the number of times the id had a detection/the number of times the detections+decodings for the id was non zero over the sliding window) * number of frames the id appeared in
+                prob = (detection_ratio) * (all_detected_ids[tid]/thought_to_be_id[tid]) * (total_frames_id[tid])# (frame_ratio) #* all_detected_ids[tid]/total_frames_id[tid] #* current_qr_sum[t]
+                prob_list.append(prob)
+                # print(i,f,tid,[thought_to_be_id[tid],current_detection_count_id[tid],remaining_detections],[total_frames_id[tid],i,remaining_frames],detection_ratio,prob,(detection_ratio) * (frame_ratio),(detection_ratio) * (frame_ratio) * current_qr_sum[t])
+                
+            prob_ids[i] = current_tentative_ids[np.argmax(prob_list)]
+            probability[i] = max(prob_list)
+        else:
+            prob_ids[i] = np.nan
+            probability[i] = np.nan
+
+    sum_df['likely_ids'] = prob_ids
+    sum_df['max_prob'] = probability
+
+    likely_id_prob = [max(pct_detections[i]) if tentative_likely_ids[i] else np.nan for i in range(len(tentative_likely_ids)) ]
+    sum_df['likely_max_prob_old'] = likely_id_prob
 
     # Get all unique likely IDs for entire video
     likely_ids = [int(id) for id in sum_df['likely_ids'].unique() if not np.isnan(id)]
     
-    return likely_ids, all_detected_ids, all_decoded_ids
+    return likely_ids, sum_df, all_detected_ids, all_decoded_ids
 
 def compute_splits(unique_ids, all_track_ids, missing_frames_allowed):
     splits = {id:0 for id in unique_ids}
@@ -221,18 +285,11 @@ def compute_cumulative_iou(likely_ids, bboxes_in_frame, all_track_ids):
 
     return iou_table
 
-def determine_id_swaps(detection_by_frame, likely_id_by_frame,):
-    frame_data_detections = detection_by_frame.values
-    detection_id_list = np.array(detection_by_frame.columns)
-    # likely_id_by_frame = sum_df['max'].values
-    likely_id_by_frame = new_sum_df['likely_ids'].values
+def determine_id_swaps(frame_data_detections, likely_id_by_frame, all_track_ids, frame_idx_with_det, all_track_ids_with_detection, bboxes_in_frame, iou_threshold):
 
-
-    all_track_ids_per_frame = np.array(all_track_ids,dtype=object)[sum_df.index]
-    all_track_ids_with_detection = new_sum_df['tentative_likely_ids'].values
-    bboxes_in_frame_for_detection = np.array(bboxes_in_frame,dtype=object)[new_sum_df.index]
-
-    iou_threshold = 0.25
+    # Select the tracks in frame and bboxes in frame when there are QR detections
+    all_track_ids_per_frame = np.array(all_track_ids,dtype=object)[frame_idx_with_det]
+    bboxes_in_frame_for_detection = np.array(bboxes_in_frame,dtype=object)[frame_idx_with_det]
 
     likely_set = set()
 
@@ -241,8 +298,9 @@ def determine_id_swaps(detection_by_frame, likely_id_by_frame,):
     id_swap = np.zeros(len(frame_data_detections))
     relabeling = np.zeros(len(frame_data_detections))
 
+    print(len(likely_id_by_frame),len(frame_idx_with_det))
+
     for n,frame in enumerate(frame_data_detections):
-        # print(frame)
         if not np.isnan(likely_id_by_frame[n]):
             # Get all IDs present in the current frame
             all_ids_in_frame = all_track_ids_per_frame[n]
@@ -264,26 +322,30 @@ def determine_id_swaps(detection_by_frame, likely_id_by_frame,):
                 # and the previous ID is still in frame
                 if prev_id in all_ids_in_frame:
                     allowed_to_be_in_frame += 1
+                    print(bboxes_in_frame_for_detection[n].keys(),all_ids_in_frame,prev_id,likely_id_by_frame[n])
                     # If they are both in frame, check the IoU
                     bbox1 = bboxes_in_frame_for_detection[n][prev_id]
                     bbox2 = bboxes_in_frame_for_detection[n][current_id]
 
                     iou = compute_iou(np.array([bbox1]),np.array([bbox2]))
-
+                    print("IOU",iou)
                     iou_array[n] = iou[0]
                     # If the IoU is higher than the threshold, then it is likely
                     # just overlapping bboxes
                     if iou[0] > iou_threshold:
+                        print("Spatial 1")
                         spatial_overlap[n] = 1
                     else:
                         # If the IoU is low then it is likely an ID swap
+                        print("IDS 1")
                         id_swap[n] = 1
 
                 # Check if there are any likely IDs that are in the frame 
                 # (besides current and prev if still in frame) if so, then 
-                # likely an ID swap    
+                # likely an ID swap
+                print(likely_set, set(all_ids_in_frame),allowed_to_be_in_frame)    
                 if len(likely_set & set(all_ids_in_frame)) > allowed_to_be_in_frame:
-                    
+                    print("IDS 2")
                     if not np.isnan(likely_id_by_frame[n-1]):
                         id_swap[n] = 1
                         
@@ -292,6 +354,9 @@ def determine_id_swaps(detection_by_frame, likely_id_by_frame,):
                     # relabeling 
                     if not np.isnan(likely_id_by_frame[n-1]):
                         relabeling[n] = 1
+                        print("relabeling 1")
+
+    return iou_array, spatial_overlap, id_swap, relabeling
 
 
 def process_detections(qr_frame_data):

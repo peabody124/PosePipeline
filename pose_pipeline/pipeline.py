@@ -1757,6 +1757,7 @@ class TrackingBboxQRWindowSelect(dj.Manual):
     definition = """
     -> TrackingBboxQR
     window_len              : int
+    missing_frame_threshold : int
     """
 
 @schema
@@ -1777,9 +1778,10 @@ class TrackingBboxQRMetrics(dj.Computed):
         # Key will have video_project, filename, tracking_method AND window_len
         # window_len is size of sliding window used to calculate the likely ids
         print(key)
-        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_detections, process_decodings, get_likely_ids, get_participant_frame_count, get_unique_ids, get_ids_in_frame
+        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_detections, process_decodings, get_likely_ids, get_participant_frame_count, get_unique_ids, get_ids_in_frame, compute_splits
 
         window_len = key['window_len']
+        missing_frame_threshold = key['missing_frame_threshold']
         qr_calculated_frame_metrics = {}
 
         # Get qr data for current video
@@ -1790,6 +1792,9 @@ class TrackingBboxQRMetrics(dj.Computed):
         # Get the unique track IDs that appear in the current video
         all_track_ids = get_ids_in_frame(tracks)
         unique_ids = get_unique_ids(all_track_ids)
+
+        # Get the splits and consecutive frame lists
+        splits, consecutive_frame_list = compute_splits(unique_ids, all_track_ids, missing_frame_threshold)
 
         # Extract frame QR data for current video
         frame_data_tmp = qr_results['frame_data_dict']
@@ -1819,7 +1824,7 @@ class TrackingBboxQRMetrics(dj.Computed):
 
         
             # Find IDs that are most likely to correspond to the participant 
-            likely_ids, likely_ids_df, all_detected_ids, all_decoded_ids = get_likely_ids(detection_by_frame, decoding_by_frame,window_len)
+            likely_ids, likely_ids_df, all_detected_ids, all_decoded_ids = get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,window_len)
 
             qr_calculated_frame_metrics['likely_ids_by_frame'] = likely_ids_df['likely_ids'].values
             qr_calculated_frame_metrics['ids_with_det_by_frame'] = likely_ids_df['tentative_likely_ids'].values
@@ -1827,7 +1832,6 @@ class TrackingBboxQRMetrics(dj.Computed):
             qr_calculated_frame_metrics['detection_by_frame'] = detection_by_frame.values
             qr_calculated_frame_metrics['decoding_by_frame'] = decoding_by_frame.values
 
-            print(qr_calculated_frame_metrics)
 
             print(f"Likely Participant ID(s): {likely_ids}")
 
@@ -1867,16 +1871,9 @@ class TrackingBboxQRMetrics(dj.Computed):
 
 
 @schema
-class TrackingBboxSplitSelect(dj.Manual):
-    definition = """
-    -> TrackingBboxQRMetrics
-    missing_frame_threshold : int
-    """
-
-@schema
 class TrackingBboxSplits(dj.Computed):
     definition = """
-    -> TrackingBboxSplitSelect
+    -> TrackingBboxQRMetrics
     ---
     total_split_sum         : int
     total_split_frequency   : float
