@@ -177,10 +177,9 @@ def get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,
     
     return likely_ids, sum_df, all_detected_ids, all_decoded_ids
 
-def compute_splits(unique_ids, all_track_ids, missing_frames_allowed):
-    splits = {id:0 for id in unique_ids}
+def compute_consecutive_frames(unique_ids, all_track_ids):
+  
     consecutive_frames_cnt = {id:0 for id in unique_ids}
-    missing_frames_cnt = {id:0 for id in unique_ids}
     consecutive_frame_list = {id:[] for id in unique_ids}
     start_index = {id:0 for id in unique_ids}
     stop_index = {id:-1 for id in unique_ids}
@@ -189,7 +188,7 @@ def compute_splits(unique_ids, all_track_ids, missing_frames_allowed):
 
     # Iterate through the ids present in each frame
     for i,id_list in enumerate(all_track_ids):
-        
+
         # Of all unique IDs present in the video,
         # look at the ones not currently in the frame 
         for missing_id in (unique_ids - set(id_list)):
@@ -202,19 +201,11 @@ def compute_splits(unique_ids, all_track_ids, missing_frames_allowed):
                 # id showed up in consecutively
                 stop_index[missing_id] = i-1
                 consecutive_frame_list[missing_id].append([start_index[missing_id],stop_index[missing_id]])
-                # Reset the start index
-                start_index[missing_id] = 0
-            if stop_index[missing_id] != -1:
-                # Increment the 'missing' count for the current ID
-                missing_frames_cnt[missing_id] += 1
+                # Reset the start index and stop index
+                start_index[missing_id] = -1
         
         # Look at the IDs present in the frame
         for present_id in id_list:
-            # If the current ID in frame was previously missing for more
-            # than 'missing_frames_allowed' add one to the number of splits
-            # for that ID
-            if missing_frames_cnt[present_id] > missing_frames_allowed:
-                splits[present_id] += 1
             
             # If the number of consecutive frames for the current ID is 0
             # then the current index is the new starting index (since it 
@@ -224,18 +215,16 @@ def compute_splits(unique_ids, all_track_ids, missing_frames_allowed):
             
             # Increment the number of consecutive frames the current ID has appeared in
             consecutive_frames_cnt[present_id] += 1
-            # Reset the 'missing' count for the current ID
-            missing_frames_cnt[present_id] = 0
+
 
     # Go through track IDs present at the end of the video and append the first frame of
     # their appearance and the final frame index to the consecutive frame list        
     for track_id in consecutive_frame_list:
-        
-        if consecutive_frame_list[track_id] == []:
+        if start_index[track_id] != -1:
             consecutive_frame_list[track_id].append([start_index[track_id],total_tracks-1])
 
-    return splits, consecutive_frame_list
-
+    return consecutive_frame_list
+    
 def compute_cumulative_iou(likely_ids, bboxes_in_frame, all_track_ids):
 
     num_likely_ids = len(likely_ids)

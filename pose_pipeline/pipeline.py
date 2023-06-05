@@ -1757,7 +1757,6 @@ class TrackingBboxQRWindowSelect(dj.Manual):
     definition = """
     -> TrackingBboxQR
     window_len              : int
-    missing_frame_threshold : int
     """
 
 @schema
@@ -1772,16 +1771,16 @@ class TrackingBboxQRMetrics(dj.Computed):
     likely_id_overlap             : longblob
     participant_frame_count       : int
     qr_calculated_frame_metrics   : longblob
+    consecutive_frames_by_id      : longblob
     """
 
     def make(self, key):
         # Key will have video_project, filename, tracking_method AND window_len
         # window_len is size of sliding window used to calculate the likely ids
         print(key)
-        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_detections, process_decodings, get_likely_ids, get_participant_frame_count, get_unique_ids, get_ids_in_frame, compute_splits
+        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_detections, process_decodings, get_likely_ids, get_participant_frame_count, get_unique_ids, get_ids_in_frame, compute_consecutive_frames
 
         window_len = key['window_len']
-        missing_frame_threshold = key['missing_frame_threshold']
         qr_calculated_frame_metrics = {}
 
         # Get qr data for current video
@@ -1793,8 +1792,8 @@ class TrackingBboxQRMetrics(dj.Computed):
         all_track_ids = get_ids_in_frame(tracks)
         unique_ids = get_unique_ids(all_track_ids)
 
-        # Get the splits and consecutive frame lists
-        splits, consecutive_frame_list = compute_splits(unique_ids, all_track_ids, missing_frame_threshold)
+        # Get the consecutive frame lists
+        consecutive_frame_list = compute_consecutive_frames(unique_ids, all_track_ids)
 
         # Extract frame QR data for current video
         frame_data_tmp = qr_results['frame_data_dict']
@@ -1866,14 +1865,22 @@ class TrackingBboxQRMetrics(dj.Computed):
         key["likely_id_overlap"]       = likely_id_overlap
         key["participant_frame_count"] = participant_in_frame
         key["qr_calculated_frame_metrics"] = qr_calculated_frame_metrics
+        key["consecutive_frames_by_id"] = consecutive_frame_list
 
         self.insert1(key)
+
+@schema
+class TrackingBboxSplitSelect(dj.Manual):
+    definition = """
+    -> TrackingBboxQRMetrics
+    missing_frame_threshold : int
+    """
 
 
 @schema
 class TrackingBboxSplits(dj.Computed):
     definition = """
-    -> TrackingBboxQRMetrics
+    -> TrackingBboxSplitSelect
     ---
     total_split_sum         : int
     total_split_frequency   : float
@@ -1886,20 +1893,30 @@ class TrackingBboxSplits(dj.Computed):
         # Key will have video_project, filename, tracking_method, and missing_frames_threshold
         # missing_frames_threshold is number of frames that a track can be missing from a video before it counts as a split
         print(key)
-        from pose_pipeline.utils.tracking_evaluation import compute_splits, get_unique_ids, get_ids_in_frame
+        from pose_pipeline.utils.tracking_evaluation import get_unique_ids, get_ids_in_frame
 
         missing_frame_threshold = key['missing_frame_threshold']
 
         # Get tracks data for current video
         tracks = (TrackingBbox & key ).fetch1('tracks')
-        likely_tracks = (TrackingBboxQRMetrics & key).fetch1('likely_tracks')
+        likely_tracks, consecutive_frames_by_id = (TrackingBboxQRMetrics & key).fetch1('likely_tracks','consecutive_frames_by_id')
 
         # Get the unique track IDs that appear in the current video
         all_track_ids = get_ids_in_frame(tracks)
         unique_ids = get_unique_ids(all_track_ids)
 
-        # Get the splits and consecutive frame lists
-        splits, consecutive_frame_list = compute_splits(unique_ids, all_track_ids, missing_frame_threshold)
+        # # Get the splits and consecutive frame lists
+        # splits, consecutive_frame_list = compute_splits(unique_ids, all_track_ids, missing_frame_threshold)
+
+        splits = {}
+        for track_id in consecutive_frames_by_id:
+            # go through the list of consecutive frames for each ID
+            splits[track_id] = 0
+            for f in range(1,len(consecutive_frames_by_id[track_id])):
+                gap = consecutive_frames_by_id[track_id][f][0] - consecutive_frames_by_id[track_id][f-1][1] - 1
+
+                if gap > missing_frame_threshold:
+                    splits[track_id] += 1
 
         # Get split sum and frequency for likely tracks
         likely_track_splits = [splits[s] for s in likely_tracks]
@@ -1913,7 +1930,7 @@ class TrackingBboxSplits(dj.Computed):
         for id in splits:
             # Calculate the total number of frames the id appeared
             id_frame_total = 0.
-            for frames in consecutive_frame_list[id]:
+            for frames in consecutive_frames_by_id[id]:
                 # Summing each consecutive window for each ID (+1 since frames saved are inclusive ranges)
                 id_frame_total += (frames[1] - frames[0]) + 1
 
@@ -1925,7 +1942,7 @@ class TrackingBboxSplits(dj.Computed):
         key["total_split_frequency"]    = total_split_frequency
         key["splits_by_id"]             = splits
         key["splits_frequency"]          = split_frequency
-        key["consecutive_frames"]       = consecutive_frame_list
+        key["consecutive_frames"]       = consecutive_frames_by_id
 
         self.insert1(key)
 
