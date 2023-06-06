@@ -1557,18 +1557,20 @@ class TopDownPersonVideo(dj.Computed):
             "Right wrist",
         ]
 
-
 @schema
 class TrackingBboxQR(dj.Computed):
     definition = """
     -> TrackingBbox
     ---
+    total_frames           : int
+    qr_detected_frames     : int
+    qr_decoded_frames      : int
     qr_results             : longblob
     """
 
     def make(self, key):
         print(key)
-        from pose_pipeline.utils.tracking import detect_qr_code, calculate_tracking_confidence
+        from pose_pipeline.utils.tracking import detect_qr_code
         import pose_pipeline.utils.tracking as tracking
         from tqdm import tqdm
         import matplotlib
@@ -1617,22 +1619,36 @@ class TrackingBboxQR(dj.Computed):
 
         display(container)
 
+        # Setting up initial QR tracking info
+        # This is the number of frames between QR detections before the search area will be expanded
+        qr_missing_frames_allowed = 600
+        qr_missing_cnt = 0
+        detected_flag = False
+
+        # This is the % to take off of each side to create the bbox enclosing the search area
+        border_pct = 20
+        print(f"h: {h}, w: {w}")
+
+        x1 = int(w * border_pct * 0.01)
+        y1 = int(h * border_pct * 0.01)
+        x2 = int(w - w * border_pct * 0.01)
+        y2 = int(h - h * border_pct * 0.01)
+
+        bbox = np.array([x1,y1,x2,y2])
+
         print("setting up")
-        qr_count = 0
-        qr_decoded_count = 0
-        qr_decoded = []
+        unique_qr_decoded_text = []
         track_id_qr_detection = {}
-        qr_info_list = []
 
         qr_bbox = []
+        qr_decoding = []
 
         counts = {
             "detections": 0,
             "decoding": 0,
         }
 
-        track_id_per_frame = []
-
+        # Initializing QReader
         qr_reader = tracking.QReaderdetector()
 
         print("detecting qr")
@@ -1646,84 +1662,109 @@ class TrackingBboxQR(dj.Computed):
             out_image = frame.copy()
             qr_image = frame.copy()
 
-            detected_info_dict = {}
-
-            frame_tracks = {}
-
             frame_qr_bbox = []
+            frame_qr_decoded_text = []
 
-            # Cycle through each track in the current frame
-            for track in tracks[idx]:
+            image = qr_image.copy()
+            small = int(5e-3 * np.max(image.shape))
+            large = 2 * small
+        
 
-                # Getting the track id and bounding box from the current track
-                track_id = track["track_id"]
-                bbox = track["tlbr"]
+            # Run the QR detection method, which returns [decoded text, top left of QR code, bottom right of QR code] or False
+            qr_detection = detect_qr_code(image, bbox, qr_reader)
 
-                frame_tracks[track_id] = 1
+            # This variable is False if no QR codes are detected
+            if qr_detection != False:
 
-                c = colors(track_id)
-                c = (int(c[0] * 255.0), int(c[1] * 255.0), int(c[2] * 255.0))
+                qr_missing_cnt = 0
+                detected_flag = True
 
-                # Making a copy of the current frame and determining sizes for bounding boxes
-                image = qr_image.copy()
-                small = int(5e-3 * np.max(image.shape))
-                large = 2 * small
+                # Unpacking the output of the QR detection method
+                decodedText, top_left_tuple, bottom_right_tuple = qr_detection
 
-                # If the current track id is not present in the QR info dict, add it and initialize count to 0
-                current_track_id = track_id
-                if current_track_id not in track_id_qr_detection:
-                    track_id_qr_detection[current_track_id] = 0
+                # Increment the count of total QR detections
+                counts["detections"] += 1
 
-                # Run the QR detection method, which returns [decoded text, top left of QR code, bottom right of QR code] or False
-                qr_detection = detect_qr_code(image, bbox, qr_reader)
+                # Save the coordinates for the bounding box around the QR code
+                frame_qr_bbox = [top_left_tuple, bottom_right_tuple]
 
-                # This variable is False if no QR codes are detected
-                if qr_detection != False:
+                # Flatten the bbox coords
+                bbox_coords = [coord for corner in frame_qr_bbox for coord in corner]
+                
+                # Get the new search area for QR codes
+                qr_h = abs(bbox_coords[3] - bbox_coords[1])
+                qr_w = abs(bbox_coords[2] - bbox_coords[0])
+                
+                new_search_coord_x1 = bbox_coords[0] - 2*qr_w 
+                new_search_coord_y1 = bbox_coords[1] - 2*qr_h 
+                new_search_coord_x2 = bbox_coords[2] + 2*qr_w
+                new_search_coord_y2 = bbox_coords[3] + 2*qr_h
 
-                    # Unpacking the output of the QR detection method
-                    decodedText, top_left_tuple, bottom_right_tuple = qr_detection
+                # confirm you are going to stay in the bounds of the image
+                if new_search_coord_x1 > 0 and new_search_coord_y1 > 0 and new_search_coord_x2 < w and new_search_coord_y2 < h: 
+                    # A QR code was detected, now we can search in a smaller area around the bbox
+                    # x1 = max(0,int(new_search_coord_x1))
+                    # y1 = max(0,int(new_search_coord_y1))
+                    # x2 = min(w,int(new_search_coord_x2))
+                    # y2 = min(h,int(new_search_coord_y2))
+                    x1 = int(new_search_coord_x1)
+                    y1 = int(new_search_coord_y1)
+                    x2 = int(new_search_coord_x2)
+                    y2 = int(new_search_coord_y2)
 
-                    # Increment the detection count for the current track ID
-                    track_id_qr_detection[current_track_id] += 1
+                bbox = np.array([x1,y1,x2,y2])
 
-                    # Add the decoded text to the QR information dictionary for the current track ID
-                    detected_info_dict[track_id] = decodedText
+                # draw a rectangle around the QR code based on the location passed from the detection method
+                cv2.rectangle(out_image, top_left_tuple, bottom_right_tuple, color=(0, 0, 255), thickness=10)
 
-                    # Increment the count of total QR detections
-                    qr_count += 1
-                    counts["detections"] += 1
+                frame_qr_decoded_text = decodedText
 
-                    # Save the coordinates for the bounding box around the QR code
-                    frame_qr_bbox = [top_left_tuple, bottom_right_tuple]
+                # Increment the count of correct QR decoding
+                if decodedText != "":
+                    counts["decoding"] += 1
 
-                    # draw a rectangle around the QR code based on the location passed from the detection method
-                    cv2.rectangle(out_image, top_left_tuple, bottom_right_tuple, color=(0, 0, 255), thickness=10)
+                # Keep track of the strings decoded during the video
+                if decodedText not in unique_qr_decoded_text:
+                    unique_qr_decoded_text.append(decodedText)
 
-                    # Increment the count of correct QR decoding
-                    if qr_detection[0] != "":
-                        qr_decoded_count += 1
-                        counts["decoding"] += 1
+            else:
+                qr_missing_cnt += 1 
+        
+                # If there have been no QR detections for the allowed # of frames, expand the search area
+                if qr_missing_cnt == qr_missing_frames_allowed:
+                    qr_missing_cnt = 0
+                    # if there was already a detection, expand the area around the last QR detection
+                    if detected_flag:
+                        new_search_coord_x1 -= qr_w 
+                        new_search_coord_y1 -= qr_h 
+                        new_search_coord_x2 += qr_w
+                        new_search_coord_y2 += qr_h
+                        
+                        # confirm you are going to stay in the bounds of the image
+                        x1 = max(0,int(new_search_coord_x1))
+                        y1 = max(0,int(new_search_coord_y1))
+                        x2 = min(w,int(new_search_coord_x2))
+                        y2 = min(h,int(new_search_coord_y2))
 
-                    # Keep track of the strings decoded during the video
-                    if qr_detection[0] not in qr_decoded:
-                        qr_decoded.append(qr_detection[0])
+                        bbox = np.array([x1,y1,x2,y2])
+                            
+                    else:
+                        # otherwise expand the original bbox size
+                        x1 = int(w * border_pct * 0.5 * 0.01)
+                        y1 = int(h * border_pct * 0.5 * 0.01)
+                        x2 = int(w - w * border_pct * 0.5 * 0.01)
+                        y2 = int(h - h * border_pct * 0.5 * 0.01)
 
-                # Draw the bounding box for the current track ID for the current frame
-                cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), large)
-                cv2.rectangle(out_image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), c, small)
+                        bbox = np.array([x1,y1,x2,y2])
+                        
+            # Draw the bounding box for the current track ID for the current frame
+            cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), large)
+            cv2.rectangle(out_image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), small)
 
-                # Add track ID text to the image
-                label = str(track_id)
-                textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, int(5.0e-3 * out_image.shape[0]), 4)[0]
-                x = int((bbox[0] + bbox[2]) / 2 - textsize[0] / 2)
-                y = int((bbox[3] + bbox[1]) / 2 + textsize[1] / 2)
-                cv2.putText(out_image, label, (x, y), 0, 5.0e-3 * out_image.shape[0], (255, 255, 255), thickness=large)
-                cv2.putText(out_image, label, (x, y), 0, 5.0e-3 * out_image.shape[0], c, thickness=small)
-
-            # Append the detected info (if there was any decoded text) to the list for all frames
-            qr_info_list.append(detected_info_dict)
             # Add the coordinates for the current qr_bbox to the list for all frames
             qr_bbox.append(frame_qr_bbox)
+            # Add the decoded text to the list for all frames
+            qr_decoding.append(frame_qr_decoded_text)
 
             # move back to BGR format and write to movie
             out_frame = cv2.cvtColor(out_image, cv2.COLOR_RGB2BGR)
@@ -1736,17 +1777,22 @@ class TrackingBboxQR(dj.Computed):
                 #cv2.imshow("image", out_frame)
                 #cv2.waitKey(1)
 
-        print(f"Detected the QR code in {qr_count} out of {total_frames} frames ({float(qr_count / total_frames)}).")
-        print(f"Text Decoded: {qr_decoded} {qr_decoded_count} times")
+        print(f"Detected the QR code in {counts['detections']} out of {total_frames} frames ({float(counts['detections'] / total_frames)}).")
+        print(f"Text Decoded: {unique_qr_decoded_text} {counts['decoding']} times")
         print("TRACK IDS WITH QR DETECTIONS")
 
-        track_id_qr_detection["frame_data_dict"] = qr_info_list
         track_id_qr_detection["qr_counts"] = counts
         track_id_qr_detection["qr_bbox"] = qr_bbox
-        track_id_qr_detection["qr_decoded"] = qr_decoded
+        track_id_qr_detection["qr_decoded"] = unique_qr_decoded_text
+        # If there is anything besides [], then there was a detection in that frame
+        track_id_qr_detection["qr_info_by_frame"] = qr_decoding
+
 
         # Save the QR information for the current video
-        key["qr_results"] = track_id_qr_detection
+        key["total_frames"]       = total_frames
+        key["qr_detected_frames"] = counts['detections']
+        key["qr_decoded_frames"]  = counts['decoding']
+        key["qr_results"]         = track_id_qr_detection
         self.insert1(key)
 
         cv2.destroyAllWindows()
