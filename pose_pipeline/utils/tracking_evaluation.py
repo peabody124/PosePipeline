@@ -61,7 +61,7 @@ def get_participant_frame_count(tracks,likely_ids):
 
     return participant_in_frame
 
-def get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list, window_len=25):
+def get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,all_track_ids, window_len=25):
     # Get cumulative sums of detections and decodings
     detection_sum = detection_by_frame.cumsum()
     decoding_sum = decoding_by_frame.cumsum()
@@ -136,29 +136,39 @@ def get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,
         
         # i is the count in range(len(sum_df))
         # f is the current index from sum_df
+        for d_id in detection_by_frame.loc[f].to_dict():
+            # If the ID was detected in the frame
+            if detection_by_frame.loc[f][d_id] == 1:
+                if d_id not in current_detection_count_id:
+                    current_detection_count_id[d_id] = 0
+                    
+                current_detection_count_id[d_id] += 1
+                
+        for f_id in all_track_ids[f]:
+            if f_id not in current_frame_count_id:
+                # current_detection_count_id[tid] = 1
+                current_frame_count_id[f_id] = 0
+                start_frame[f_id] = f
 
+            current_frame_count_id[f_id] += 1
         # Get the tentative likely ids for each frame
         current_tentative_ids = tentative_likely_ids[i]
 
         if current_tentative_ids:
             prob_list = []
             for t,tid in enumerate(current_tentative_ids):
-                if tid not in current_frame_count_id:
-                    current_detection_count_id[tid] = 1
-                    current_frame_count_id[tid] = 1
-                    start_frame[tid] = f
 
-                remaining_detections = thought_to_be_id[tid] - current_detection_count_id[tid]
-                remaining_frames = total_frames_id[tid] - i + start_frame[tid]
+                remaining_detections = all_detected_ids[tid] - current_detection_count_id[tid]
+                remaining_frames = total_frames_id[tid] - current_frame_count_id[tid] + 1
                 
-                current_detection_count_id[tid] += 1
+                # current_detection_count_id[tid] += 1
                 # Detection ratio is the number of remaining detections for the id/number of frames the id will appear in
                 detection_ratio = remaining_detections/remaining_frames
                 # frame_ratio = all_detected_ids[tid]/total_frames_id[tid]
                 # the prob is the detection ratio * (the number of times the id had a detection/the number of times the detections+decodings for the id was non zero over the sliding window) * number of frames the id appeared in
                 prob = (detection_ratio) * (all_detected_ids[tid]/thought_to_be_id[tid]) * (total_frames_id[tid])# (frame_ratio) #* all_detected_ids[tid]/total_frames_id[tid] #* current_qr_sum[t]
                 prob_list.append(prob)
-                # print(i,f,tid,[thought_to_be_id[tid],current_detection_count_id[tid],remaining_detections],[total_frames_id[tid],i,remaining_frames],detection_ratio,prob,(detection_ratio) * (frame_ratio),(detection_ratio) * (frame_ratio) * current_qr_sum[t])
+                # print(i,f,tid,[thought_to_be_id[tid],current_detection_count_id[tid],remaining_detections],[total_frames_id[tid],i,remaining_frames],detection_ratio,prob)
                 
             prob_ids[i] = current_tentative_ids[np.argmax(prob_list)]
             probability[i] = max(prob_list)
@@ -309,7 +319,7 @@ def determine_id_swaps(frame_data_detections, likely_id_by_frame, all_track_ids,
             if prev_id != current_id:
                 # If not, check if the current ID has a detection in the current frame
                 # and the previous ID is still in frame
-                if prev_id in all_ids_in_frame:
+                if prev_id in all_ids_in_frame and current_id in all_ids_in_frame:
                     allowed_to_be_in_frame += 1
                     print(bboxes_in_frame_for_detection[n].keys(),all_ids_in_frame,prev_id,likely_id_by_frame[n])
                     # If they are both in frame, check the IoU
@@ -359,7 +369,8 @@ def process_detections(qr_frame_data):
     frame_df_detections.fillna(0,inplace=True)
     # Replacing all strings with 1s
     # Any string represents a detection
-    for decoded_str in sorted(list(map(list,set(list(map(frozenset,qr_frame_data.values.T))))),key=len, reverse=True)[0]:
+    unique_detections = sorted(list(map(list,set(list(map(frozenset,qr_frame_data.values.T))))),key=len, reverse=True)
+    for decoded_str in unique_detections[0]:
         frame_df_detections.replace(to_replace=decoded_str,value=1,inplace=True)
 
     # get the cumulative sum of detections
@@ -393,7 +404,7 @@ def process_decodings(qr_frame_data):
     # Replacing empty strings with 0 and all other decoded strings with 1
     frame_df_decoding.replace(to_replace=qr_decoded_sorted[0],value=0,inplace=True)
     if len(qr_decoded_sorted) > 1:
-        frame_df_decoding.replace(to_replace=qr_decoded_sorted[1],value=1,inplace=True)
+        frame_df_decoding.replace(to_replace=qr_decoded_sorted[1:],value=1,inplace=True)
 
     # get the cumulative sum of correct decoding
     decoding_sum = frame_df_decoding.cumsum()

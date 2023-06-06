@@ -1804,18 +1804,19 @@ class TrackingBboxQRMetrics(dj.Computed):
         # Calculate frame overlap and counts for each track ID based on tracks data
         overlaps, track_id_counts = compute_temporal_overlap(tracks,unique_ids)
 
-        # Get the number of detections and decodings
-        detection_by_frame = process_detections(frame_data)
-        decoding_by_frame = process_decodings(frame_data) 
+        if qr_results['qr_counts']['detections'] > 1:
 
-        qr_detections = len(detection_by_frame)
-        qr_decodings = len(decoding_by_frame[(decoding_by_frame.T != 0).any()])
+            # Get the number of detections and decodings
+            detection_by_frame = process_detections(frame_data)
+            decoding_by_frame = process_decodings(frame_data) 
 
-        print("Total frames: ",total_frames)
-        print(f"Frames with detections: {qr_detections} ({qr_detections/total_frames})")
-        print(f"Frames with decoding: {qr_decodings} ({qr_decodings/total_frames})")
+            qr_detections = len(detection_by_frame)
+            qr_decodings = len(decoding_by_frame[(decoding_by_frame.T != 0).any()])
 
-        if len(detection_by_frame) > 1:
+            print("Total frames: ",total_frames)
+            print(f"Frames with detections: {qr_detections} ({qr_detections/total_frames})")
+            print(f"Frames with decoding: {qr_decodings} ({qr_decodings/total_frames})")
+
         
             # If the window length is larger than the number of detections then use 1 instead
             if len(detection_by_frame) < window_len:
@@ -1823,7 +1824,7 @@ class TrackingBboxQRMetrics(dj.Computed):
 
         
             # Find IDs that are most likely to correspond to the participant 
-            likely_ids, likely_ids_df, all_detected_ids, all_decoded_ids = get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,window_len)
+            likely_ids, likely_ids_df, all_detected_ids, all_decoded_ids = get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,all_track_ids, window_len)
 
             qr_calculated_frame_metrics['likely_ids_by_frame'] = likely_ids_df['likely_ids'].values
             qr_calculated_frame_metrics['ids_with_det_by_frame'] = likely_ids_df['tentative_likely_ids'].values
@@ -1856,6 +1857,13 @@ class TrackingBboxQRMetrics(dj.Computed):
             qr_calculated_frame_metrics = {}
             likely_id_overlap = []
             participant_in_frame = 0
+
+            qr_detections = 0
+            qr_decodings = 0
+
+            print("Total frames: ",total_frames)
+            print(f"Frames with detections: {qr_detections} ({qr_detections/total_frames})")
+            print(f"Frames with decoding: {qr_decodings} ({qr_decodings/total_frames})")
 
         # Save the QR information for the current video
         key["total_frames"]            = total_frames
