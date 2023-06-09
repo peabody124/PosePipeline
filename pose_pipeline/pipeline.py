@@ -1217,6 +1217,8 @@ class LiftingMethodLookup(dj.Lookup):
         {"lifting_method": 0, "lifting_method_name": "GastNet"},
         {"lifting_method": 1, "lifting_method_name": "VideoPose3D"},
         {"lifting_method": 2, "lifting_method_name": "PoseAug"},
+        {"lifting_method": 11, "lifting_method_name": "Bridging_COCO_25"},
+        {"lifting_method": 12, "lifting_method_name": "Bridging_bml_movi_87"},
     ]
 
 
@@ -1246,7 +1248,8 @@ class LiftingPerson(dj.Computed):
         elif (LiftingMethodLookup & key).fetch1("lifting_method_name") == "GastNet":
             from .wrappers.gastnet_lifting import process_gastnet
 
-            results = process_gastnet(key)
+            with add_path(os.environ["GAST_PATH"]):
+                results = process_gastnet(key)
         elif (LiftingMethodLookup & key).fetch1("lifting_method_name") == "VideoPose3D":
             from .wrappers.videopose3d import process_videopose3d
 
@@ -1255,6 +1258,31 @@ class LiftingPerson(dj.Computed):
             from .wrappers.poseaug import process_poseaug
 
             results = process_poseaug(key)
+        elif (LiftingMethodLookup & key).fetch1("lifting_method_name") == "PoseAug":
+            from .wrappers.poseaug import process_poseaug
+
+            results = process_poseaug(key)
+
+        elif (LiftingMethodLookup & key).fetch1("lifting_method_name") == "Bridging_COCO_25":
+            from pose_pipeline.wrappers.bridging import filter_skeleton
+            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image
+
+            keypoints3d = (BottomUpBridgingPerson & key).fetch1("keypoints3d")
+            keypoints3d = np.array(filter_skeleton(keypoints3d, "coco_25"))
+            # Filter out keypoints that are outside of the image since confidence estimates do
+            # not capture this
+            keypoints3d = keypoints_filter_clipped_image(key, keypoints3d)
+            results = {"keypoints_3d": keypoints3d[:, :, :3], "keypoints_valid": keypoints3d[:, :, -1] > 0.5}
+        elif (LiftingMethodLookup & key).fetch1("lifting_method_name") == "Bridging_bml_movi_87":
+            from pose_pipeline.wrappers.bridging import filter_skeleton
+            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image
+
+            keypoints3d = (BottomUpBridgingPerson & key).fetch1("keypoints3d")
+            keypoints3d = np.array(filter_skeleton(keypoints3d, "bml_movi_87"))
+            # Filter out keypoints that are outside of the image since confidence estimates do
+            # not capture this
+            keypoints3d = keypoints_filter_clipped_image(key, keypoints3d)
+            results = {"keypoints_3d": keypoints3d[:, :, :3], "keypoints_valid": keypoints3d[:, :, -1] > 0.5}
         else:
             raise Exception(f"Method not implemented {key}")
 
