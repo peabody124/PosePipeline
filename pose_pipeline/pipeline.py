@@ -1560,7 +1560,7 @@ class TopDownPersonVideo(dj.Computed):
 @schema
 class TrackingBboxQR(dj.Computed):
     definition = """
-    -> TrackingBbox
+    -> Video
     ---
     total_frames           : int
     qr_detected_frames     : int
@@ -1585,13 +1585,9 @@ class TrackingBboxQR(dj.Computed):
 
         # Fetch the video and tracks from the respective tables
         video = (Video & key).fetch1("video")
-        tracks = (TrackingBbox & key).fetch1("tracks")
+        # tracks = (TrackingBbox & key).fetch1("tracks")
 
         compressed_video = compress(video)
-
-        # Get the number of unique track IDs and generate colors for each
-        N = len(np.unique([t["track_id"] for track in tracks for t in track]))
-        colors = matplotlib.cm.get_cmap("hsv", lut=N)
 
         # Create OpenCV video capture object to go through each frame
         cap = cv2.VideoCapture(compressed_video)
@@ -1653,7 +1649,7 @@ class TrackingBboxQR(dj.Computed):
 
         print("detecting qr")
 
-        for idx in tqdm(range(len(tracks))):
+        for idx in tqdm(range(total_frames)):
 
             ret, frame = cap.read()
             if not ret or frame is None:
@@ -1718,6 +1714,7 @@ class TrackingBboxQR(dj.Computed):
                 cv2.rectangle(out_image, top_left_tuple, bottom_right_tuple, color=(0, 0, 255), thickness=10)
 
                 frame_qr_decoded_text = decodedText
+                # frame_qr_decoded_text = [decodedText]
 
                 # Increment the count of correct QR decoding
                 if decodedText != "":
@@ -1781,7 +1778,6 @@ class TrackingBboxQR(dj.Computed):
         print(f"Text Decoded: {unique_qr_decoded_text} {counts['decoding']} times")
         print("TRACK IDS WITH QR DETECTIONS")
 
-        track_id_qr_detection["qr_counts"] = counts
         track_id_qr_detection["qr_bbox"] = qr_bbox
         track_id_qr_detection["qr_decoded"] = unique_qr_decoded_text
         # If there is anything besides [], then there was a detection in that frame
@@ -1797,6 +1793,188 @@ class TrackingBboxQR(dj.Computed):
 
         cv2.destroyAllWindows()
         cap.release()
+
+@schema
+class TrackingBboxQRByID(dj.Computed):
+    definition = """
+    -> TrackingBbox
+    ---
+    qr_results_by_id     : longblob
+    """
+
+    def make(self, key):
+        print(key)
+        from tqdm import tqdm
+        import matplotlib
+
+        import subprocess
+        import os
+
+        visualize = False
+
+        if visualize:
+            def compress(video):
+                fd, outfile = tempfile.mkstemp(suffix=".mp4")
+                subprocess.run(["ffmpeg", "-y", "-i", video, "-c:v", "libx264","-loglevel", "warning", "-b:v", "1M", outfile])
+                os.close(fd)
+                return outfile
+            # Fetch the video and tracks from the respective tables
+            video = (Video & key).fetch1("video")
+
+            compressed_video = compress(video)
+
+            # Create OpenCV video capture object to go through each frame
+            cap = cv2.VideoCapture(compressed_video)
+
+            # get video info (total frames, frame height/width, frames per second)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+
+            downsample = 4
+            visualize = True
+
+            # configure output
+            output_size = (int(w / downsample), int(h / downsample))
+
+            # Get the number of unique track IDs and generate colors for each
+            N = len(np.unique([t["track_id"] for track in tracks for t in track]))
+            colors = matplotlib.cm.get_cmap("hsv", lut=N)
+
+
+            import ipywidgets as widgets
+            from IPython.display import display
+            owidth = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)/downsample)
+            oheight = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)/downsample)
+
+            canvas = widgets.Image(width=owidth, height=oheight)
+            container = widgets.HBox([canvas])
+
+            display(container)
+
+        def compute_intersection_area(qr_bbox,track_bbox):
+            # Get the top left and bottom right of the intersection of the qr code and the track
+            top_left = np.maximum(qr_bbox[:2],track_bbox[:2])
+            bottom_right = np.minimum(qr_bbox[2:],track_bbox[2:])
+            
+            # if there is no intersection then exit
+            if np.any(top_left > bottom_right):
+                return 0.
+            
+            # Get dimensions and area of intersection
+            intersection_dims = bottom_right - top_left
+            intersection_area = np.prod(intersection_dims) 
+            
+            return intersection_area
+
+
+        # Fetch the tracks
+        tracks = (TrackingBbox & key).fetch1("tracks")
+
+        qr_results,total_frames = (TrackingBboxQR & key).fetch1("qr_results","total_frames")
+
+        frames = min(total_frames,len(tracks))
+
+        # Unpack results from QR detection
+        qr_bboxes    = qr_results['qr_bbox']
+
+        qr_info_list = []
+
+        for idx in tqdm(range(frames)):
+
+            #######################################################################################################################
+            if visualize:
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    break
+
+                out_image = frame.copy()
+                qr_image = frame.copy()
+            #######################################################################################################################
+
+            detected_info_dict = {}
+            
+            # Get the bbox for the current frame if it exists
+            current_bbox = qr_bboxes[idx]
+
+            if current_bbox != []:
+                # This means there was a detection in the current frame
+                
+                # Make the bbox easier to work with
+                # Flatten and convert to numpy array
+                qr_bbox = np.array([coord for corner in current_bbox for coord in corner])
+                
+                # Calculate the area of the qr bbox
+                qr_area = np.prod(qr_bbox[2:] - qr_bbox[:2])
+                
+                # Confirm the qr bbox is not empty
+                if qr_area > 0:
+                    if visualize:
+                        cv2.rectangle(out_image, current_bbox[0], current_bbox[1], color=(0, 0, 255), thickness=10)
+                    # Cycle through each track in the current frame
+                    for track in tracks[idx]:
+
+                        # Getting the track id and bounding box from the current track
+                        track_id = track["track_id"]
+                        bbox = track["tlbr"]
+
+                        # Check if the qr bbox is contained in the track
+                        intersection_area = compute_intersection_area(qr_bbox,bbox)
+
+                        # calculate percentage of intersection
+                        intersection_pct = intersection_area/qr_area
+                        
+                        detected_info_dict[track_id] = intersection_pct
+
+                        #######################################################################################################################
+                        if visualize:
+                            c = colors(track_id)
+                            c = (int(c[0] * 255.0), int(c[1] * 255.0), int(c[2] * 255.0))
+
+                            # Making a copy of the current frame and determining sizes for bounding boxes
+                            image = qr_image.copy()
+                            small = int(5e-3 * np.max(image.shape))
+                            large = 2 * small
+
+                            # Draw the bounding box for the current track ID for the current frame
+                            cv2.rectangle(image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), large)
+                            cv2.rectangle(out_image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), c, small)
+
+                            # Add track ID text to the image
+                            label = str(track_id)
+                            textsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, int(5.0e-3 * out_image.shape[0]), 4)[0]
+                            x = int((bbox[0] + bbox[2]) / 2 - textsize[0] / 2)
+                            y = int((bbox[3] + bbox[1]) / 2 + textsize[1] / 2)
+                            cv2.putText(out_image, label, (x, y), 0, 5.0e-3 * out_image.shape[0], (255, 255, 255), thickness=large)
+                            cv2.putText(out_image, label, (x, y), 0, 5.0e-3 * out_image.shape[0], c, thickness=small)
+                        #######################################################################################################################
+
+            # Append the detected info to the list for all frames
+            qr_info_list.append(detected_info_dict)
+
+
+            #######################################################################################################################
+            if visualize:
+                # move back to BGR format and write to movie
+                out_frame = cv2.cvtColor(out_image, cv2.COLOR_RGB2BGR)
+                out_frame = cv2.resize(out_image, output_size)
+
+                #out_frame = cv2.resize(out_frame, (0,0), fx=1/downsample, fy=1/downsample)
+                ret, jpeg = cv2.imencode('.jpg', out_frame)
+                canvas.value = jpeg.tobytes()
+                #cv2.imshow("image", out_frame)
+                #cv2.waitKey(1)
+            #######################################################################################################################
+
+        # Save the QR information for the current video
+        key["qr_results_by_id"] = qr_info_list
+        self.insert1(key)
+        #######################################################################################################################
+        if visualize:
+            cv2.destroyAllWindows()
+            cap.release()
+        #######################################################################################################################
 
 @schema
 class TrackingBboxQRWindowSelect(dj.Manual):
