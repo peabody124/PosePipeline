@@ -358,63 +358,56 @@ def determine_id_swaps(frame_data_detections, likely_id_by_frame, all_track_ids,
     return iou_array, spatial_overlap, id_swap, relabeling
 
 
-def process_detections(qr_frame_data):
+def process_qr_data(qr_frame_data, qr_id_frame_data):
 
-    # Create a copy of the frame data
-    frame_df_detections = qr_frame_data.copy()
+    # This gives the % overlap of the QR and track bbox for each frame
+    qr_id_results_df = pd.DataFrame(qr_id_frame_data)
+
+    # This is binary if there was a detection in each frame (if the row is not [] then there was a detection)
+    qr_info_by_frame_detection = [1 if item != [] else 0 for item in qr_frame_data]
+    # This is binary if there was a decoding or not in each frame (if the decoded string was not empty or [])
+    qr_info_by_frame_decoding = [1 if bool(item) else 0 for item in qr_frame_data]
+    
+
+    # Get a list of any frames where there are no detections 
+    no_detection_idx = qr_id_results_df[qr_id_results_df.isna().all(1)].index
+
+    # replace all nans with 0
+    qr_id_results_df.fillna(0,inplace=True)
+
+    qr_id_results_decoding_mask = qr_id_results_df * np.array(qr_info_by_frame_decoding).reshape((-1,1))
+
+    # # Drop any frames which have no detections
+    # qr_id_results_df.dropna(how='all',inplace=True)
+
     # Drop any frames which have no detections
-    frame_df_detections.dropna(how='all',inplace=True)
+    qr_id_results_df_dets = qr_id_results_df.drop(no_detection_idx)
+    qr_id_results_df_decs = qr_id_results_decoding_mask.drop(no_detection_idx)
 
-    # Replace all Nans with 0s
-    frame_df_detections.fillna(0,inplace=True)
-    # Replacing all strings with 1s
-    # Any string represents a detection
-    unique_detections = sorted(list(map(list,set(list(map(frozenset,qr_frame_data.values.T))))),key=len, reverse=True)
-    for decoded_str in unique_detections[0]:
-        frame_df_detections.replace(to_replace=decoded_str,value=1,inplace=True)
+    # Finding detections and decodings for each ID in each frame
+    # Create two dataframes, one that is 1 or 0 if there was a detection for that ID in the current frame
+    # and one that is 1 or 0 if there was a decoding for that ID in the current frame
+    binary_detections = pd.DataFrame(np.where(qr_id_results_df_dets > 0,1,0),qr_id_results_df_dets.index,qr_id_results_df_dets.columns)
+    binary_decoding = pd.DataFrame(np.where(qr_id_results_df_decs > 0,1,0),qr_id_results_df_decs.index,qr_id_results_df_decs.columns)
 
-    # get the cumulative sum of detections
-    detections_sum = frame_df_detections.cumsum()
-    # Reset index to just include frames where there was at least one detection
-    # detections_sum.index = np.arange(1,len(detections_sum)+1)
-    # Divide the number of detections for each track by the index
-    detection_percentage = detections_sum.divide(detections_sum.index,axis=0)
+    # Removing any IDs that had 0 detections (would have 0 decodings too)
+    any_detections = (binary_detections != 0).any(axis=0)
+    columns_to_keep = any_detections[any_detections].index.tolist()
 
-    # detection_percentage['likely_subject'] = detection_percentage
-    # detections_sum
-    # detection_percentage_diff = detection_percentage.diff() / detection_percentage.index.to_series().diff()
+    binary_detections = binary_detections[columns_to_keep]
+    binary_decoding = binary_decoding[columns_to_keep]
 
-    return frame_df_detections
+    detection_sum = binary_detections.cumsum()
+    decoding_sum = binary_decoding.cumsum()
 
-def process_decodings(qr_frame_data):
+    # cumulative sum of the % overlaps
+    overlap_detection_sum = qr_id_results_df.cumsum()
+    # Removing any ids that had 0 detections
+    overlap_detection_sum = overlap_detection_sum.loc[:,overlap_detection_sum.iloc[-1] != 0]
 
-    # Create copy of frame data
-    frame_df_decoding = qr_frame_data.copy()
-    # Drop any frames which have no detections
-    frame_df_decoding.dropna(how='all',inplace=True)
+    return binary_detections, binary_decoding, overlap_detection_sum
 
-    # Get a list of the unique values decoded during the video
-    unique_decodings = sorted(list(map(list,set(list(map(frozenset,qr_frame_data.values.T))))),key=len, reverse=True)[0]
-    unique_decodings = [x for x in unique_decodings if x == x]
-
-    qr_decoded_sorted = sorted(unique_decodings,key=len)
-
-    # Replace all Nans with 0s
-    frame_df_decoding.fillna(0,inplace=True)
-    # Replacing empty strings with 0 and all other decoded strings with 1
-    frame_df_decoding.replace(to_replace=qr_decoded_sorted[0],value=0,inplace=True)
-    if len(qr_decoded_sorted) > 1:
-        frame_df_decoding.replace(to_replace=qr_decoded_sorted[1:],value=1,inplace=True)
-
-    # get the cumulative sum of correct decoding
-    decoding_sum = frame_df_decoding.cumsum()
-    # decoding_sum
-    # Reset index to just include frames where there was at least one detection
-    # decoding_sum.index = np.arange(1,len(decoding_sum)+1)
-    # Divide the number of detections for each track by the index
-    decoding_percentage = decoding_sum.divide(decoding_sum.index,axis=0)
-
-    return frame_df_decoding    
+   
 
 def get_unique_ids(ids_by_frame):
     unique_ids = {id for frame in ids_by_frame for id in frame}
