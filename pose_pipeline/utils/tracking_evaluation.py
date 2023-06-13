@@ -10,7 +10,7 @@ def compute_temporal_overlap(tracks,unique_ids,return_df=True):
 
     # Initialize overlaps table that includes ids from 0 to max_id inclusive
     overlaps = np.zeros((num_tracks+1, num_tracks+1), dtype=int)
-    print(overlaps.shape)
+    # print(overlaps.shape)
     track_id_counts = {}
 
     # Go through each frame
@@ -287,7 +287,7 @@ def compute_cumulative_iou(likely_ids, bboxes_in_frame, all_track_ids):
 
     return iou_table
 
-def determine_id_swaps(frame_data_detections, likely_id_by_frame, all_track_ids, frame_idx_with_det, all_track_ids_with_detection, bboxes_in_frame, iou_threshold):
+def determine_id_swaps(frame_data_detections, likely_ids_by_frame, all_track_ids, frame_idx_with_det, all_track_ids_with_detection, bboxes_in_frame, iou_threshold):
 
     # Select the tracks in frame and bboxes in frame when there are QR detections
     all_track_ids_per_frame = np.array(all_track_ids,dtype=object)[frame_idx_with_det]
@@ -300,18 +300,18 @@ def determine_id_swaps(frame_data_detections, likely_id_by_frame, all_track_ids,
     id_swap = np.zeros(len(frame_data_detections))
     relabeling = np.zeros(len(frame_data_detections))
 
-    print(len(likely_id_by_frame),len(frame_idx_with_det))
+    print(len(likely_ids_by_frame),len(frame_idx_with_det))
 
     for n,frame in enumerate(frame_data_detections):
-        if not np.isnan(likely_id_by_frame[n]):
+        if not np.isnan(likely_ids_by_frame[n]):
             # Get all IDs present in the current frame
             all_ids_in_frame = all_track_ids_per_frame[n]
             # Get the IDs that have detections in the current frame
-            ids_in_frame_with_det = all_track_ids_with_detection[n]
+            # ids_in_frame_with_det = all_track_ids_with_detection[n]
             
             # Get the likely id from the previous frame
-            prev_id = likely_id_by_frame[n-1]
-            current_id = likely_id_by_frame[n]
+            prev_id = likely_ids_by_frame[n-1]
+            current_id = likely_ids_by_frame[n]
             
             # Keep track of likely IDs encountered
             likely_set.add(current_id)
@@ -324,7 +324,7 @@ def determine_id_swaps(frame_data_detections, likely_id_by_frame, all_track_ids,
                 # and the previous ID is still in frame
                 if prev_id in all_ids_in_frame and current_id in all_ids_in_frame:
                     allowed_to_be_in_frame += 1
-                    print(bboxes_in_frame_for_detection[n].keys(),all_ids_in_frame,prev_id,likely_id_by_frame[n])
+                    print(bboxes_in_frame_for_detection[n].keys(),all_ids_in_frame,prev_id,likely_ids_by_frame[n])
                     # If they are both in frame, check the IoU
                     bbox1 = bboxes_in_frame_for_detection[n][prev_id]
                     bbox2 = bboxes_in_frame_for_detection[n][current_id]
@@ -348,13 +348,13 @@ def determine_id_swaps(frame_data_detections, likely_id_by_frame, all_track_ids,
                 print(likely_set, set(all_ids_in_frame),allowed_to_be_in_frame)    
                 if len(likely_set & set(all_ids_in_frame)) > allowed_to_be_in_frame:
                     print("IDS 2")
-                    if not np.isnan(likely_id_by_frame[n-1]):
+                    if not np.isnan(likely_ids_by_frame[n-1]):
                         id_swap[n] = 1
                         
                 else:
                     # if none of the previous likely IDs are in frame, then
                     # relabeling 
-                    if not np.isnan(likely_id_by_frame[n-1]):
+                    if not np.isnan(likely_ids_by_frame[n-1]):
                         relabeling[n] = 1
                         print("relabeling 1")
 

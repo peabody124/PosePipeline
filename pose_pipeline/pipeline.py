@@ -1617,7 +1617,7 @@ class TrackingBboxQR(dj.Computed):
 
         # Setting up initial QR tracking info
         # This is the number of frames between QR detections before the search area will be expanded
-        qr_missing_frames_allowed = 600
+        qr_missing_frames_allowed = 200
         qr_missing_cnt = 0
         detected_flag = False
 
@@ -1690,11 +1690,13 @@ class TrackingBboxQR(dj.Computed):
                 # Get the new search area for QR codes
                 qr_h = abs(bbox_coords[3] - bbox_coords[1])
                 qr_w = abs(bbox_coords[2] - bbox_coords[0])
+
+                search_area = max(qr_h,qr_w)
                 
-                new_search_coord_x1 = bbox_coords[0] - 2*qr_w 
-                new_search_coord_y1 = bbox_coords[1] - 2*qr_h 
-                new_search_coord_x2 = bbox_coords[2] + 2*qr_w
-                new_search_coord_y2 = bbox_coords[3] + 2*qr_h
+                new_search_coord_x1 = bbox_coords[0] - 3*search_area  
+                new_search_coord_y1 = bbox_coords[1] - 3*search_area  
+                new_search_coord_x2 = bbox_coords[2] + 3*search_area 
+                new_search_coord_y2 = bbox_coords[3] + 3*search_area 
 
                 # confirm you are going to stay in the bounds of the image
                 if new_search_coord_x1 > 0 and new_search_coord_y1 > 0 and new_search_coord_x2 < w and new_search_coord_y2 < h: 
@@ -1732,10 +1734,10 @@ class TrackingBboxQR(dj.Computed):
                     qr_missing_cnt = 0
                     # if there was already a detection, expand the area around the last QR detection
                     if detected_flag:
-                        new_search_coord_x1 -= qr_w 
-                        new_search_coord_y1 -= qr_h 
-                        new_search_coord_x2 += qr_w
-                        new_search_coord_y2 += qr_h
+                        new_search_coord_x1 -= search_area  
+                        new_search_coord_y1 -= search_area  
+                        new_search_coord_x2 += search_area 
+                        new_search_coord_y2 += search_area 
                         
                         # confirm you are going to stay in the bounds of the image
                         x1 = max(0,int(new_search_coord_x1))
@@ -1747,9 +1749,9 @@ class TrackingBboxQR(dj.Computed):
                             
                     else:
                         # otherwise expand the original bbox size
-                        x1 = int(w * border_pct * 0.5 * 0.01)
+                        x1 = int(w * border_pct * 0.25 * 0.01)
                         y1 = int(h * border_pct * 0.5 * 0.01)
-                        x2 = int(w - w * border_pct * 0.5 * 0.01)
+                        x2 = int(w - w * border_pct * 0.25 * 0.01)
                         y2 = int(h - h * border_pct * 0.5 * 0.01)
 
                         bbox = np.array([x1,y1,x2,y2])
