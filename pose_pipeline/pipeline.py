@@ -2002,15 +2002,17 @@ class TrackingBboxQRMetrics(dj.Computed):
         # Key will have video_project, filename, tracking_method AND window_len
         # window_len is size of sliding window used to calculate the likely ids
         print(key)
-        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_detections, process_decodings, get_likely_ids, get_participant_frame_count, get_unique_ids, get_ids_in_frame, compute_consecutive_frames
+        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_qr_data, get_likely_ids, get_participant_frame_count, get_unique_ids, get_ids_in_frame, compute_consecutive_frames
 
         window_len = key['window_len']
         qr_calculated_frame_metrics = {}
 
         # Get qr data for current video
-        tracking_method, qr_results = (TrackingBboxQR & key).fetch1('tracking_method','qr_results')
+        tracking_method, qr_raw_results = (TrackingBboxQR & key).fetch1('tracking_method','qr_results')
+        # This is the output from using the QR detection with the different tracking algos
+        qr_id_frame_data = (TrackingBboxQRByID & key).fetch1('qr_results_by_id')
         # Get tracks data for current video
-        tracks, num_tracks = (TrackingBbox & key ).fetch1('tracks','num_tracks')
+        tracks, num_tracks = (TrackingBbox & key).fetch1('tracks','num_tracks')
 
         # Get the unique track IDs that appear in the current video
         all_track_ids = get_ids_in_frame(tracks)
@@ -2018,21 +2020,35 @@ class TrackingBboxQRMetrics(dj.Computed):
 
         # Get the consecutive frame lists
         consecutive_frame_list = compute_consecutive_frames(unique_ids, all_track_ids)
-
-        # Extract frame QR data for current video
-        frame_data_tmp = qr_results['frame_data_dict']
-        frame_data = pd.DataFrame(frame_data_tmp)
+        # print(qr_results)
+        # # Extract frame QR data for current video
+        # frame_data_tmp = qr_results['frame_data_dict']
+        # frame_data = pd.DataFrame(frame_data_tmp)
 
         total_frames = len(tracks)
 
         # Calculate frame overlap and counts for each track ID based on tracks data
         overlaps, track_id_counts = compute_temporal_overlap(tracks,unique_ids)
 
-        if qr_results['qr_counts']['detections'] > 1:
+        # This gives the % overlap of the QR and track bbox for each frame
+        qr_id_results_df = pd.DataFrame(qr_id_frame_data)
+
+        # cumulative sum of the % overlaps
+        overlap_detection_sum = qr_id_results_df.cumsum()
+        # Removing any ids that had 0 detections
+        overlap_detection_sum = overlap_detection_sum.loc[:,overlap_detection_sum.iloc[-1] != 0]
+
+        qr_overlap_total_sum = overlap_detection_sum.tail(1).to_dict('records')[0]
+
+        detection_check = {k:v for (k,v) in qr_overlap_total_sum.items() if v > 1}
+
+        if len(detection_check) > 0:
 
             # Get the number of detections and decodings
-            detection_by_frame = process_detections(frame_data)
-            decoding_by_frame = process_decodings(frame_data) 
+            # detection_by_frame = process_detections(frame_data)
+            # decoding_by_frame = process_decodings(frame_data) 
+
+            detection_by_frame, decoding_by_frame = process_qr_data(qr_raw_results['qr_info_by_frame'], qr_id_results_df)
 
             qr_detections = len(detection_by_frame)
             qr_decodings = len(decoding_by_frame[(decoding_by_frame.T != 0).any()])
@@ -2048,7 +2064,7 @@ class TrackingBboxQRMetrics(dj.Computed):
 
         
             # Find IDs that are most likely to correspond to the participant 
-            likely_ids, likely_ids_df, all_detected_ids, all_decoded_ids = get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,all_track_ids, window_len)
+            likely_ids, likely_ids_df, all_detected_ids, all_decoded_ids = get_likely_ids(detection_by_frame, decoding_by_frame, qr_overlap_total_sum, consecutive_frame_list,all_track_ids, window_len)
 
             qr_calculated_frame_metrics['likely_ids_by_frame'] = likely_ids_df['likely_ids'].values
             qr_calculated_frame_metrics['ids_with_det_by_frame'] = likely_ids_df['tentative_likely_ids'].values

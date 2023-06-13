@@ -61,7 +61,7 @@ def get_participant_frame_count(tracks,likely_ids):
 
     return participant_in_frame
 
-def get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,all_track_ids, window_len=25):
+def get_likely_ids(detection_by_frame, decoding_by_frame,qr_overlap_total_sum, consecutive_frame_list,all_track_ids, window_len):
     # Get cumulative sums of detections and decodings
     detection_sum = detection_by_frame.cumsum()
     decoding_sum = decoding_by_frame.cumsum()
@@ -71,8 +71,8 @@ def get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,
     all_decoded_ids = decoding_sum.tail(1).to_dict('records')[0]
 
     # Get the total number of detections
-    total_detection_frames = len(detection_by_frame)
-
+    total_detection_frames = len(detection_sum)
+    total_video_frames = len(all_track_ids)
     # take the sum of the cumulative sums over a sliding window 
     sum_df = detection_sum.diff(periods=window_len) + decoding_sum.diff(periods=window_len)
     qr_sum_list = sum_df.values
@@ -133,7 +133,7 @@ def get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,
     probability = np.zeros(len(sum_df))
 
     for i,f in enumerate(sum_df.index):
-        
+
         # i is the count in range(len(sum_df))
         # f is the current index from sum_df
         for d_id in detection_by_frame.loc[f].to_dict():
@@ -141,14 +141,13 @@ def get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,
             if detection_by_frame.loc[f][d_id] == 1:
                 if d_id not in current_detection_count_id:
                     current_detection_count_id[d_id] = 0
-                    
+
                 current_detection_count_id[d_id] += 1
-                
+
         for f_id in all_track_ids[f]:
             if f_id not in current_frame_count_id:
                 # current_detection_count_id[tid] = 1
                 current_frame_count_id[f_id] = 0
-                start_frame[f_id] = f
 
             current_frame_count_id[f_id] += 1
         # Get the tentative likely ids for each frame
@@ -157,19 +156,23 @@ def get_likely_ids(detection_by_frame, decoding_by_frame,consecutive_frame_list,
         if current_tentative_ids:
             prob_list = []
             for t,tid in enumerate(current_tentative_ids):
-
+                
+                if tid not in current_frame_count_id:
+                    current_frame_count_id[tid] = 0
+                
                 remaining_detections = all_detected_ids[tid] - current_detection_count_id[tid]
                 remaining_frames = total_frames_id[tid] - current_frame_count_id[tid] + 1
-                
+
                 # current_detection_count_id[tid] += 1
                 # Detection ratio is the number of remaining detections for the id/number of frames the id will appear in
                 detection_ratio = remaining_detections/remaining_frames
                 # frame_ratio = all_detected_ids[tid]/total_frames_id[tid]
                 # the prob is the detection ratio * (the number of times the id had a detection/the number of times the detections+decodings for the id was non zero over the sliding window) * number of frames the id appeared in
-                prob = (detection_ratio) * (all_detected_ids[tid]/thought_to_be_id[tid]) * (total_frames_id[tid])# (frame_ratio) #* all_detected_ids[tid]/total_frames_id[tid] #* current_qr_sum[t]
+                # prob = (detection_ratio) * (all_detected_ids[tid]/thought_to_be_id[tid]) * (total_frames_id[tid])# (frame_ratio) #* all_detected_ids[tid]/total_frames_id[tid] #* current_qr_sum[t]
+                prob = (detection_ratio) * (qr_overlap_total_sum[tid]/all_detected_ids[tid]) * (total_frames_id[tid]/total_video_frames)# (frame_ratio) #* all_detected_ids[tid]/total_frames_id[tid] #* current_qr_sum[t]
                 prob_list.append(prob)
                 # print(i,f,tid,[thought_to_be_id[tid],current_detection_count_id[tid],remaining_detections],[total_frames_id[tid],i,remaining_frames],detection_ratio,prob)
-                
+
             prob_ids[i] = current_tentative_ids[np.argmax(prob_list)]
             probability[i] = max(prob_list)
         else:
@@ -358,10 +361,7 @@ def determine_id_swaps(frame_data_detections, likely_id_by_frame, all_track_ids,
     return iou_array, spatial_overlap, id_swap, relabeling
 
 
-def process_qr_data(qr_frame_data, qr_id_frame_data):
-
-    # This gives the % overlap of the QR and track bbox for each frame
-    qr_id_results_df = pd.DataFrame(qr_id_frame_data)
+def process_qr_data(qr_frame_data, qr_id_results_df):
 
     # This is binary if there was a detection in each frame (if the row is not [] then there was a detection)
     qr_info_by_frame_detection = [1 if item != [] else 0 for item in qr_frame_data]
@@ -400,12 +400,7 @@ def process_qr_data(qr_frame_data, qr_id_frame_data):
     detection_sum = binary_detections.cumsum()
     decoding_sum = binary_decoding.cumsum()
 
-    # cumulative sum of the % overlaps
-    overlap_detection_sum = qr_id_results_df.cumsum()
-    # Removing any ids that had 0 detections
-    overlap_detection_sum = overlap_detection_sum.loc[:,overlap_detection_sum.iloc[-1] != 0]
-
-    return binary_detections, binary_decoding, overlap_detection_sum
+    return binary_detections, binary_decoding
 
    
 
