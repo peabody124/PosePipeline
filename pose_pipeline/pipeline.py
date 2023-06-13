@@ -1979,7 +1979,7 @@ class TrackingBboxQRByID(dj.Computed):
 @schema
 class TrackingBboxQRWindowSelect(dj.Manual):
     definition = """
-    -> TrackingBboxQR
+    -> TrackingBboxQRByID
     window_len              : int
     """
 
@@ -2002,13 +2002,13 @@ class TrackingBboxQRMetrics(dj.Computed):
         # Key will have video_project, filename, tracking_method AND window_len
         # window_len is size of sliding window used to calculate the likely ids
         print(key)
-        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_qr_data, get_likely_ids, get_participant_frame_count, get_unique_ids, get_ids_in_frame, compute_consecutive_frames
+        from pose_pipeline.utils.tracking_evaluation import compute_temporal_overlap, process_qr_data, process_qr_tracks_data, get_likely_ids, get_participant_frame_count, get_unique_ids, get_ids_in_frame, compute_consecutive_frames
 
         window_len = key['window_len']
         qr_calculated_frame_metrics = {}
 
         # Get qr data for current video
-        tracking_method, qr_raw_results = (TrackingBboxQR & key).fetch1('tracking_method','qr_results')
+        qr_raw_results = (TrackingBboxQR & key).fetch1('qr_results')
         # This is the output from using the QR detection with the different tracking algos
         qr_id_frame_data = (TrackingBboxQRByID & key).fetch1('qr_results_by_id')
         # Get tracks data for current video
@@ -2030,13 +2030,7 @@ class TrackingBboxQRMetrics(dj.Computed):
         # Calculate frame overlap and counts for each track ID based on tracks data
         overlaps, track_id_counts = compute_temporal_overlap(tracks,unique_ids)
 
-        # This gives the % overlap of the QR and track bbox for each frame
-        qr_id_results_df = pd.DataFrame(qr_id_frame_data)
-
-        # cumulative sum of the % overlaps
-        overlap_detection_sum = qr_id_results_df.cumsum()
-        # Removing any ids that had 0 detections
-        overlap_detection_sum = overlap_detection_sum.loc[:,overlap_detection_sum.iloc[-1] != 0]
+        qr_id_results_df, no_detection_idx, overlap_detection_sum = process_qr_tracks_data(qr_id_frame_data)
 
         qr_overlap_total_sum = overlap_detection_sum.tail(1).to_dict('records')[0]
 
@@ -2048,7 +2042,9 @@ class TrackingBboxQRMetrics(dj.Computed):
             # detection_by_frame = process_detections(frame_data)
             # decoding_by_frame = process_decodings(frame_data) 
 
-            detection_by_frame, decoding_by_frame = process_qr_data(qr_raw_results['qr_info_by_frame'], qr_id_results_df)
+            qr_raw_data = qr_raw_results['qr_info_by_frame'][:total_frames]
+
+            detection_by_frame, decoding_by_frame = process_qr_data(qr_raw_data, qr_id_results_df,no_detection_idx)
 
             qr_detections = len(detection_by_frame)
             qr_decodings = len(decoding_by_frame[(decoding_by_frame.T != 0).any()])
@@ -2083,7 +2079,7 @@ class TrackingBboxQRMetrics(dj.Computed):
                 for j in range(i+1, len(likely_ids)): 
                     likely_id_a = likely_ids[i]
                     likely_id_b = likely_ids[j]
-                    print(f"Temporal overlap between track IDs {likely_id_a} and {likely_id_b}: {temporal_overlap.loc[likely_id_a,likely_id_b]} frames")
+                    # print(f"Temporal overlap between track IDs {likely_id_a} and {likely_id_b}: {temporal_overlap.loc[likely_id_a,likely_id_b]} frames")
 
             likely_id_overlap = temporal_overlap.values
 
