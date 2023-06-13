@@ -361,7 +361,7 @@ def determine_id_swaps(frame_data_detections, likely_id_by_frame, all_track_ids,
     return iou_array, spatial_overlap, id_swap, relabeling
 
 
-def process_qr_data(qr_frame_data, qr_id_results_df):
+def process_qr_data(qr_frame_data, qr_id_results_df, no_detection_idx):
 
     # This is binary if there was a detection in each frame (if the row is not [] then there was a detection)
     qr_info_by_frame_detection = [1 if item != [] else 0 for item in qr_frame_data]
@@ -369,11 +369,11 @@ def process_qr_data(qr_frame_data, qr_id_results_df):
     qr_info_by_frame_decoding = [1 if bool(item) else 0 for item in qr_frame_data]
     
 
-    # Get a list of any frames where there are no detections 
-    no_detection_idx = qr_id_results_df[qr_id_results_df.isna().all(1)].index
+    # # Get a list of any frames where there are no detections 
+    # no_detection_idx = qr_id_results_df[qr_id_results_df.isna().all(1)].index
 
-    # replace all nans with 0
-    qr_id_results_df.fillna(0,inplace=True)
+    # # replace all nans with 0
+    # qr_id_results_df.fillna(0,inplace=True)
 
     qr_id_results_decoding_mask = qr_id_results_df * np.array(qr_info_by_frame_decoding).reshape((-1,1))
 
@@ -401,6 +401,24 @@ def process_qr_data(qr_frame_data, qr_id_results_df):
     decoding_sum = binary_decoding.cumsum()
 
     return binary_detections, binary_decoding
+
+def process_qr_tracks_data(qr_id_frame_data):
+
+    # This gives the % overlap of the QR and track bbox for each frame
+    qr_id_results_df = pd.DataFrame(qr_id_frame_data)
+
+    # Get a list of any frames where there are no detections 
+    no_detection_idx = qr_id_results_df[qr_id_results_df.isna().all(1)].index
+
+    # replace all nans with 0
+    qr_id_results_df.fillna(0,inplace=True)
+
+    # cumulative sum of the % overlaps
+    overlap_detection_sum = qr_id_results_df.cumsum()
+    # Removing any ids that had 0 detections
+    overlap_detection_sum = overlap_detection_sum.loc[:,overlap_detection_sum.iloc[-1] != 0]
+
+    return qr_id_results_df, no_detection_idx, overlap_detection_sum
 
    
 
