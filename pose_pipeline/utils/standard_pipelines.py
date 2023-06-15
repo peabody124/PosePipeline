@@ -1,14 +1,23 @@
 from pose_pipeline import *
 from pose_pipeline.utils.tracking import annotate_single_person
-from typing import List, Dict
+from typing import List, Dict, Union
+
 
 def find_lifting_keys(filt=None):
     return ((Video - LiftingPerson) & filt).fetch("KEY")
 
 
-def top_down_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="MMpose"):
+def top_down_pipeline(
+    key, tracking_method_name: str = "TraDeS", top_down_method_name: str = "MMpose", reserve_jobs: bool = False
+):
     """
     Run pipeline on a video through to the top down person layer.
+
+    Args:
+        key (dict)                  : key to compute
+        tracking_method_name (str)  : tracking method of PersonBbox to use to identify person
+        top_down_method_name (str)  : top down method of TopDownPerson to use to identify person
+        reserve_jobs (bool)          : whether to reserve jobs or not
     """
 
     # set up and compute tracking method
@@ -18,7 +27,7 @@ def top_down_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="
     )
     tracking_key["tracking_method"] = tracking_method
     TrackingBboxMethod.insert1(tracking_key, skip_duplicates=True)
-    TrackingBbox.populate(key, reserve_jobs=True)
+    TrackingBbox.populate(key, reserve_jobs=reserve_jobs)
 
     # see if it can be automatically annotated
     annotate_single_person(key)
@@ -42,19 +51,34 @@ def top_down_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="
         OpenPose.populate(key)
         OpenPosePerson.populate(key)
 
-    TopDownPerson.populate(top_down_key, reserve_jobs=True)
+    TopDownPerson.populate(top_down_key, reserve_jobs=reserve_jobs)
 
     # compute some necessary statistics
-    VideoInfo.populate(key, reserve_jobs=True)
-    DetectedFrames.populate(key, reserve_jobs=True)
-    BestDetectedFrames.populate(key, reserve_jobs=True)
+    VideoInfo.populate(key, reserve_jobs=reserve_jobs)
+    DetectedFrames.populate(key, reserve_jobs=reserve_jobs)
+    BestDetectedFrames.populate(key, reserve_jobs=reserve_jobs)
 
     return True
 
 
-def lifting_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="MMpose", lifting_method_name="GastNet"):
+def lifting_pipeline(
+    key,
+    tracking_method_name: str = "TraDeS",
+    top_down_method_name: str = "MMpose",
+    lifting_method_name: str = "GastNet",
+    reserve_jobs: bool = False,
+):
     """
     Run pipeline on a video through to the  lifting layer.
+
+    Args:
+        key (dict)                  : key to compute
+        tracking_method_name (str)  : tracking method of PersonBbox to use to identify person
+        top_down_method_name (str)  : top down method of TopDownPerson to use to identify person
+        lifting_method_name (str)   : lifting method of LiftingPerson to use to identify person
+
+    Returns:
+        bool: whether the pipeline was successful or not
     """
 
     res = top_down_pipeline(key, tracking_method_name, top_down_method_name)
@@ -80,21 +104,26 @@ def lifting_pipeline(key, tracking_method_name="TraDeS", top_down_method_name="M
     lifting_method = (LiftingMethodLookup & f'lifting_method_name="{lifting_method_name}"').fetch1("lifting_method")
     lifting_key["lifting_method"] = lifting_method
     LiftingMethod.insert1(lifting_key, skip_duplicates=True)
-    LiftingPerson.populate(key, reserve_jobs=True)
+    LiftingPerson.populate(key, reserve_jobs=reserve_jobs)
 
     if len(LiftingPerson & lifting_key) == 0:
         print(f"Lifting job must be reserved and not completed. {lifting_key}")
         return False
 
     # compute some necessary statistics
-    VideoInfo.populate(key, reserve_jobs=True)
-    DetectedFrames.populate(key, reserve_jobs=True)
-    BestDetectedFrames.populate(key, reserve_jobs=True)
+    VideoInfo.populate(key, reserve_jobs=reserve_jobs)
+    DetectedFrames.populate(key, reserve_jobs=reserve_jobs)
+    BestDetectedFrames.populate(key, reserve_jobs=reserve_jobs)
 
     return len(LiftingPerson & key) > 0
 
 
-def bottomup_to_topdown(keys, bottom_up_method_name="OpenPose_BODY25B", tracking_method_name="DeepSortYOLOv4"):
+def bottomup_to_topdown(
+    keys: Union[Dict, List[Dict]],
+    bottom_up_method_name: str = "OpenPose_BODY25B",
+    tracking_method_name: str = "DeepSortYOLOv4",
+    reserve_jobs: bool = False,
+):
     """
     Compute a BottomUp person and migrate to top down table
 
@@ -102,12 +131,11 @@ def bottomup_to_topdown(keys, bottom_up_method_name="OpenPose_BODY25B", tracking
     combines a PersonBbox and BottomUp method and then creates a
     TopDownPerson that migrates this data over.
 
-    Params:
+    Args:
+        keys (list of dict)         : keys to compute
         bottom_up_method_name (str) : should match BottomUpMethod and TopDownMethod
         tracking_method_name (str)  : tracking method of PersonBbox to use to identify person
-
-    Returns:
-        list of resulting keys
+        reserve_jobs (bool)         : whether to reserve jobs or not
     """
 
     results = []
@@ -125,38 +153,46 @@ def bottomup_to_topdown(keys, bottom_up_method_name="OpenPose_BODY25B", tracking
         if bottom_up_method_name in ["Bridging_COCO_25", "Bridging_bml_movi_87"]:
             from pose_pipeline.pipeline import BottomUpBridging, BottomUpBridgingPerson
 
-            BottomUpBridging.populate(key)
-            BottomUpBridgingPerson.populate(bbox_key)
+            BottomUpBridging.populate(key, reserve_jobs=reserve_jobs)
+            BottomUpBridgingPerson.populate(bbox_key, reserve_jobs=reserve_jobs)
+
+            if len(BottomUpBridgingPerson & bbox_key) == 0:
+                print(f"BottomUpBridgingPerson job must be reserved and not completed. {bbox_key}")
+                continue
+
         else:
             # compute bottom up method for this video
             key["bottom_up_method_name"] = bottom_up_method_name
             BottomUpMethod.insert1(key, skip_duplicates=True)
-            BottomUpPeople.populate(key)
+            BottomUpPeople.populate(key, reserve_jobs=reserve_jobs)
 
             # use the desired tracking method to identify the person
             key["tracking_method"] = (TrackingBboxMethodLookup & {"tracking_method_name": tracking_method_name}).fetch1(
                 "tracking_method"
             )
-            BottomUpPerson.populate(key)
+            BottomUpPerson.populate(key, reserve_jobs=reserve_jobs)
+
+            if len(BottomUpPerson & key) == 0:
+                print(f"BottomUpPerson job must be reserved and not completed. {key}")
+                continue
 
         bbox_key["top_down_method"] = (TopDownMethodLookup & {"top_down_method_name": bottom_up_method_name}).fetch1(
             "top_down_method"
         )
         TopDownMethod.insert1(bbox_key, skip_duplicates=True)
-        TopDownPerson.populate(bbox_key)
-
-        results.append((TopDownPerson & bbox_key).fetch1("KEY"))
-
-    return results
+        TopDownPerson.populate(bbox_key, reserve_jobs=reserve_jobs)
 
 
-def bottom_up_pipeline(keys: List[Dict], bottom_up_method_name: str = "OpenPose_HR", reserve_jobs: bool = True):
+def bottom_up_pipeline(
+    keys: Union[Dict, List[Dict]], bottom_up_method_name: str = "OpenPose_HR", reserve_jobs: bool = False
+):
     """
     Run bottom up method on a video
 
-    Params:
+    Args:
         keys (list) : list of keys (dict) to run bottom up on
         bottom_up_method_name (str) : should match BottomUpMethod and TopDownMethod
+        reserve_jobs (bool) : whether to reserve jobs or not
     """
 
     if type(keys) == dict:
@@ -167,17 +203,21 @@ def bottom_up_pipeline(keys: List[Dict], bottom_up_method_name: str = "OpenPose_
 
         if bottom_up_method_name in ["Bridging_COCO_25", "Bridging_bml_movi_87", "Bridging_OpenPose"]:
             from pose_pipeline.pipeline import BottomUpBridging
+
+            print(f"Computing {bottom_up_method_name} for {key}")
+
             BottomUpBridging.populate(key, reserve_jobs=reserve_jobs)
 
             if len(BottomUpBridging & key) == 0:
                 print(f"Bottom up job must be reserved and not completed. Skipping {key}")
                 continue
-            
+
             # migrate those results to BottomUpPeople
-            key = (Video & key).fetch1('KEY')
+            key = (Video & key).fetch1("KEY")
             key["bottom_up_method_name"] = bottom_up_method_name
             BottomUpMethod.insert1(key, skip_duplicates=True)
             BottomUpPeople.populate(key, reserve_jobs=reserve_jobs)
+            print(f"Computed {bottom_up_method_name} for {key}")
 
         else:
             # compute bottom up method for this video
