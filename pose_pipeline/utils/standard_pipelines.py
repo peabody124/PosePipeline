@@ -81,7 +81,7 @@ def lifting_pipeline(
         bool: whether the pipeline was successful or not
     """
 
-    res = top_down_pipeline(key, tracking_method_name, top_down_method_name)
+    res = top_down_pipeline(key, tracking_method_name, top_down_method_name, reserve_jobs=reserve_jobs)
     if not res:
         return res
 
