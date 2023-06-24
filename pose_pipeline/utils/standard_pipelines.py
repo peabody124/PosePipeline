@@ -7,63 +7,109 @@ def find_lifting_keys(filt=None):
     return ((Video - LiftingPerson) & filt).fetch("KEY")
 
 
+def tracking_pipeline(
+    keys: Union[Dict, List[Dict]],
+    tracking_method_name: str = "DeepSortYOLOv4",
+    reserve_jobs: bool = False,
+):
+    """
+    Run pipeline on a video through to the tracking layer.
+
+    Args:
+        key (dict)                   : key to compute
+        tracking_method_name (str)   : tracking method of PersonBbox to use to identify person
+        reserve_jobs (bool)          : whether to reserve jobs or not
+    """
+
+    if isinstance(keys, dict):
+        keys = [keys]
+
+    tracking_keys = []
+
+    for key in keys:
+        # compute some necessary statistics
+        VideoInfo.populate(key, reserve_jobs=reserve_jobs)
+
+        # set up and compute tracking method
+        tracking_key = key.copy()
+        tracking_method = (TrackingBboxMethodLookup & f'tracking_method_name="{tracking_method_name}"').fetch1(
+            "tracking_method"
+        )
+        tracking_key["tracking_method"] = tracking_method
+        TrackingBboxMethod.insert1(tracking_key, skip_duplicates=True)
+        TrackingBbox.populate(tracking_key, reserve_jobs=reserve_jobs)
+
+        # see if it can be automatically annotated
+        annotate_single_person(key)
+
+        # compute the person bbox (requires a method to have inserted the valid bbox)
+        PersonBbox.populate(tracking_key, reserve_jobs=True)
+
+        DetectedFrames.populate(tracking_key, reserve_jobs=reserve_jobs)
+
+        if len(PersonBbox & tracking_key) == 1:
+            tracking_keys.append((PersonBbox & tracking_key).fetch1("KEY"))
+
+    return tracking_keys
+
+
 def top_down_pipeline(
-    key, tracking_method_name: str = "TraDeS", top_down_method_name: str = "MMpose", reserve_jobs: bool = False
+    key: Union[Dict, List[Dict]],
+    tracking_method_name: str = "DeepSortYOLOv4",
+    top_down_method_name: str = "MMpose",
+    reserve_jobs: bool = False,
 ):
     """
     Run pipeline on a video through to the top down person layer.
 
     Args:
-        key (dict)                  : key to compute
+        key (dict)                  : key or keys to compute
         tracking_method_name (str)  : tracking method of PersonBbox to use to identify person
         top_down_method_name (str)  : top down method of TopDownPerson to use to identify person
         reserve_jobs (bool)          : whether to reserve jobs or not
     """
 
-    # set up and compute tracking method
-    tracking_key = key.copy()
-    tracking_method = (TrackingBboxMethodLookup & f'tracking_method_name="{tracking_method_name}"').fetch1(
-        "tracking_method"
-    )
-    tracking_key["tracking_method"] = tracking_method
-    TrackingBboxMethod.insert1(tracking_key, skip_duplicates=True)
-    TrackingBbox.populate(key, reserve_jobs=reserve_jobs)
+    tracking_keys = tracking_pipeline(key, tracking_method_name, reserve_jobs=reserve_jobs)
+    top_down_person_keys = []
 
-    # see if it can be automatically annotated
-    annotate_single_person(key)
+    for tracking_key in tracking_keys:
+        # compute the person bbox (requires a method to have inserted the valid bbox)
+        PersonBbox.populate(tracking_key, reserve_jobs=True)
 
-    # compute the person bbox (requires a method to have inserted the valid bbox)
-    PersonBbox.populate(tracking_key, reserve_jobs=True)
-
-    if len(PersonBbox & tracking_key) == 0:
-        if len(PersonBboxValid & tracking_key) == 1 and (PersonBboxValid & tracking_key).fetch1("video_subject_id") < 0:
-            print(f"Video {key} marked as invalid.")
+        if len(PersonBbox & tracking_key) == 0:
+            if (
+                len(PersonBboxValid & tracking_key) == 1
+                and (PersonBboxValid & tracking_key).fetch1("video_subject_id") < 0
+            ):
+                print(f"Video {key} marked as invalid.")
+                return False
+            print(f"Waiting for annotation of subject of interest. {tracking_key}")
             return False
-        print(f"Waiting for annotation of subject of interest. {tracking_key}")
-        return False
 
-    # compute top down person
-    top_down_key = (PersonBbox & tracking_key).fetch1("KEY")
-    top_down_method = (TopDownMethodLookup & f'top_down_method_name="{top_down_method_name}"').fetch1("top_down_method")
-    top_down_key["top_down_method"] = top_down_method
-    TopDownMethod.insert1(top_down_key, skip_duplicates=True)
-    if top_down_method_name == "OpenPose":
-        OpenPose.populate(key)
-        OpenPosePerson.populate(key)
+        # compute top down person
+        top_down_key = (PersonBbox & tracking_key).fetch1("KEY")
+        top_down_method = (TopDownMethodLookup & f'top_down_method_name="{top_down_method_name}"').fetch1(
+            "top_down_method"
+        )
+        top_down_key["top_down_method"] = top_down_method
+        TopDownMethod.insert1(top_down_key, skip_duplicates=True)
+        if top_down_method_name == "OpenPose":
+            OpenPose.populate(key)
+            OpenPosePerson.populate(key)
 
-    TopDownPerson.populate(top_down_key, reserve_jobs=reserve_jobs)
+        TopDownPerson.populate(top_down_key, reserve_jobs=reserve_jobs)
 
-    # compute some necessary statistics
-    VideoInfo.populate(key, reserve_jobs=reserve_jobs)
-    DetectedFrames.populate(key, reserve_jobs=reserve_jobs)
-    BestDetectedFrames.populate(key, reserve_jobs=reserve_jobs)
+        # TODO: probably should remove this but make sure it doesn't break anything
+        BestDetectedFrames.populate(key, reserve_jobs=reserve_jobs)
 
-    return True
+        top_down_person_keys.append(top_down_key)
+
+    return top_down_person_keys
 
 
 def lifting_pipeline(
     key,
-    tracking_method_name: str = "TraDeS",
+    tracking_method_name: str = "DeepSortYOLOv4",
     top_down_method_name: str = "MMpose",
     lifting_method_name: str = "GastNet",
     reserve_jobs: bool = False,
@@ -116,6 +162,48 @@ def lifting_pipeline(
     BestDetectedFrames.populate(key, reserve_jobs=reserve_jobs)
 
     return len(LiftingPerson & key) > 0
+
+
+def smpl_pipeline(
+    key: Union[Dict, List[Dict]],
+    tracking_method_name: str = "DeepSortYOLOv4",
+    smpl_method_name: str = "PIXIE",
+    reserve_jobs: bool = False,
+):
+    """
+    Run pipeline on a video through to the  lifting layer.
+
+    Args:
+        key (dict or list of dict)  : key or keys to compute
+        tracking_method_name (str)  : tracking method of PersonBbox to use to identify person
+        smpl_method_name (str)      : smpl method of SMPLPerson to use to identify person
+        lifting_method_name (str)   : lifting method of LiftingPerson to use to identify person
+
+    Returns:
+        list of dict: keys of SMPLPerson that were computed
+    """
+
+    tracking_keys = tracking_pipeline(key, tracking_method_name, reserve_jobs=reserve_jobs)
+    smpl_keys = []
+    for key in tracking_keys:
+        if len(PersonBbox & key) == 0:
+            if len(PersonBboxValid & key) == 1 and (PersonBboxValid & key).fetch1("video_subject_id") < 0:
+                print(f"Video {key} marked as invalid.")
+                return False
+            print(f"Waiting for annotation of subject of interest. {key}")
+            return False
+
+        # compute SMPL
+        smpl_key = key.copy()
+        smpl_method = (SMPLMethodLookup & f'smpl_method_name="{smpl_method_name}"').fetch1("smpl_method")
+        smpl_key["smpl_method"] = smpl_method
+        SMPLMethod.insert1(smpl_key, skip_duplicates=True)
+        SMPLPerson.populate(smpl_key, reserve_jobs=reserve_jobs)
+
+        if len(SMPLPerson & smpl_key) == 1:
+            smpl_keys.append(smpl_key)
+
+    return smpl_keys
 
 
 def bottomup_to_topdown(
@@ -196,7 +284,7 @@ def bottom_up_pipeline(
     """
 
     if type(keys) == dict:
-        keys = list(keys)
+        keys = [keys]
 
     for key in keys:
         key = key.copy()
@@ -224,3 +312,29 @@ def bottom_up_pipeline(
             key["bottom_up_method_name"] = bottom_up_method_name
             BottomUpMethod.insert1(key, skip_duplicates=True)
             BottomUpPeople.populate(key, reserve_jobs=reserve_jobs)
+
+
+def blur_videos(keys: Union[Dict, List[Dict]], reserve_jobs: bool = False):
+    """
+    Run blurring on a video
+
+    Args:
+        keys (list) : list of keys (dict) to run bottom up on
+        reserve_jobs (bool) : whether to reserve jobs or not
+    """
+
+    # required for blurring, which is required for annotation
+
+    if type(keys) == dict:
+        print("keys is a dict")
+        keys = [keys]
+
+    for key in keys:
+        print(key)
+
+        VideoInfo.populate(key, reserve_jobs=reserve_jobs)  # required for various downstream tasks
+        bottom_up_pipeline(key, bottom_up_method_name="Bridging_OpenPose", reserve_jobs=reserve_jobs)
+
+        # handle the case where some of the jobs where reserved
+        if len(BottomUpPeople & key) > 0:
+            BlurredVideo.populate(key, reserve_jobs=reserve_jobs)
