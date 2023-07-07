@@ -1,0 +1,14 @@
+{
+  "name": "PosePipe Dev Container",
+  "dockerComposeFile": ["docker-compose.yaml"],
+  "service": "db", 
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [8890],
+  "customizations": {
+
+    "settings": {
+      "terminal.integrated.shell.linux": "/bin/bash"
+    }
+
+  }
+}
