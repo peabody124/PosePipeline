@@ -1,9 +1,8 @@
 {
   "name": "PosePipe Dev Container",
   "dockerComposeFile": ["docker-compose.yaml"],
-  "service": "db", 
+  "service": "app", 
   "workspaceFolder": "/workspace",
-  "forwardPorts": [8890],
   "customizations": {
 
     "settings": {
