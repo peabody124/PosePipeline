@@ -2,14 +2,25 @@
   "name": "PosePipe Dev Container",
   "dockerComposeFile": ["docker-compose.yaml"],
   "service": "posepipe", 
-  "workspaceFolder": "/workspace"
+  "workspaceFolder": "/workspace",
+  // "postCreateCommand": "docker compose -f datajoint_docker/docker-compose-db.yaml",
+  // "onCreateCommand": "docker compose -f datajoint_docker/docker-compose-db.yaml",
   // "shutdownAction": "stopCompose",
   // "runArgs": ["-it","--runtime=nvidia","-e","NVIDIA_VISIBLE_DEVICES=5","-v=/datajoint_external:/datajoint_external"],
-  // "customizations": {
+  "forwardPorts": [
+		3306
+	],
+  "customizations": {
 
-  //   "settings": {
-  //     "terminal.integrated.shell.linux": "/bin/bash"
-  //   }
+    "settings": {
+			"python.pythonPath": "/usr/local/bin/python"
+		},
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-toolsai.jupyter"
+			]
+		}
 
-  // }
+  }
 }
