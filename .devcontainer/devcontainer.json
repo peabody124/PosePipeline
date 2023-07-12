@@ -1,13 +1,15 @@
 {
   "name": "PosePipe Dev Container",
   "dockerComposeFile": ["docker-compose.yaml"],
-  "service": "app", 
-  "workspaceFolder": "/workspace",
-  "customizations": {
+  "service": "posepipe", 
+  "workspaceFolder": "/workspace"
+  // "shutdownAction": "stopCompose",
+  // "runArgs": ["-it","--runtime=nvidia","-e","NVIDIA_VISIBLE_DEVICES=5","-v=/datajoint_external:/datajoint_external"],
+  // "customizations": {
 
-    "settings": {
-      "terminal.integrated.shell.linux": "/bin/bash"
-    }
+  //   "settings": {
+  //     "terminal.integrated.shell.linux": "/bin/bash"
+  //   }
 
-  }
+  // }
 }

@@ -46,6 +46,7 @@ RUN pip3 install -e /PosePipe
 COPY datajoint_config.json /root/.datajoint_config.json
 COPY scripts/*.py /PosePipe/
 
-ENTRYPOINT ["/usr/bin/python3"]
-CMD ["docker_test.py"]
-
+# CMD ["python"]
+# ENTRYPOINT ["/bin/bash"]
+# ENTRYPOINT ["/usr/bin/python3"]
+CMD ["sh", "-c", "while true; do sleep 1000; done"]
