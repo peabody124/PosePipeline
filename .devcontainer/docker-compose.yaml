@@ -1,19 +1,6 @@
-# # Example of docker-based Database Server.
-# # Start using: docker-compose up -d
-# # Stop using: docker-compose down
-# version: '2.4'
-# services:
-#   app:
-#     build: 
-#       context: ..
-#       dockerfile: ./docker/Dockerfile
-#     volumes:
-#       - .:/workspace
-#     command: ["bash", "-c", "tail -f /dev/null"]
-#     # depends_on:
-
 version: '3.8'
 services:
+  # This service builds the posepipe docker image
   posepipe:
     build:
       context: ..
@@ -25,11 +12,8 @@ services:
     volumes:
       - ..:/workspace
       - '/datajoint_external:/datajoint_external'
-      - /var/run/docker.sock:/var/run/docker.sock
 
-    # depends_on:
-    #   db:
-    #     condition: service_healthy
+  # This service starts the datajoint database image
   db:
     # image: datajoint/mysql:5.6
     # image: datajoint/mysql:5.7
