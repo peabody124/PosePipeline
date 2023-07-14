@@ -27,9 +27,9 @@ services:
       - '/datajoint_external:/datajoint_external'
       - /var/run/docker.sock:/var/run/docker.sock
 
-    depends_on:
-      db:
-        condition: service_healthy
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
   db:
     # image: datajoint/mysql:5.6
     # image: datajoint/mysql:5.7

@@ -3,13 +3,8 @@
   "dockerComposeFile": ["docker-compose.yaml"],
   "service": "posepipe", 
   "workspaceFolder": "/workspace",
-  // "postCreateCommand": "docker compose -f datajoint_docker/docker-compose-db.yaml",
-  // "onCreateCommand": "docker compose -f datajoint_docker/docker-compose-db.yaml",
-  // "shutdownAction": "stopCompose",
-  // "runArgs": ["-it","--runtime=nvidia","-e","NVIDIA_VISIBLE_DEVICES=5","-v=/datajoint_external:/datajoint_external"],
-  "forwardPorts": [
-		3306
-	],
+  "forwardPorts": [3306],
+  "postCreateCommand": "pip install ipykernel",
   "customizations": {
 
     "settings": {
