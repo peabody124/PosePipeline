@@ -58,6 +58,7 @@ def set_environmental_variables(pose_project_dir=None):
         "RIE_PATH": f"{pose_project_dir}Pose3D-RIE",
         "VIDEOPOSE3D_PATH": f"{pose_project_dir}VideoPose3D",
         "POSEAUG_PATH": f"{pose_project_dir}PoseAug",
+        "HYBRIDIK_PATH": f"{pose_project_dir}HybrIK",
     }
     for var, path in env_paths.items():
         assert Path(path).exists(), f"Could not find path {path}"
