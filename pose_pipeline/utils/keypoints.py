@@ -27,6 +27,6 @@ def keypoints_filter_clipped_image(key, keypoints2d):
             np.isnan(keypoints2d[..., 1]),
         )
     )
-    keypoints2d[clipped, 2] = 0
+    keypoints2d[clipped, -1] = 0 # modified to work with 3d keypoints
 
     return keypoints2d
