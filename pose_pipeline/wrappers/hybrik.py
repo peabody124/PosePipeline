@@ -162,8 +162,9 @@ def process_hybrik(key):
 
 def get_hybrik_smpl_callback(key, device='cuda'):
 
-    from hybrik.models.layers.smpl.lbs import hybrik as hybrik_compute_smpl
-    from hybrik.utils.render_pytorch3d import render_mesh
+    with add_path(os.environ["HYBRIDIK_PATH"]):
+        from hybrik.models.layers.smpl.lbs import hybrik as hybrik_compute_smpl
+        from hybrik.utils.render_pytorch3d import render_mesh
 
     from pose_pipeline.utils.visualization import draw_keypoints
 
