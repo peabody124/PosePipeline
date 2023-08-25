@@ -993,6 +993,7 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 9, "top_down_method_name": "OpenPose_LR"},
         {"top_down_method": 11, "top_down_method_name": "Bridging_COCO_25"},
         {"top_down_method": 12, "top_down_method_name": "Bridging_bml_movi_87"},
+        {"top_down_method": 13, "top_down_method_name": "Bridging_smpl+head_30"},
     ]
 
 
@@ -1066,6 +1067,15 @@ class TopDownPerson(dj.Computed):
 
             key["keypoints"] = (BottomUpBridgingPerson & key).fetch1("keypoints")
             key["keypoints"] = np.array(filter_skeleton(key["keypoints"], "bml_movi_87"))
+            # Filter out keypoints that are outside of the image since confidence estimates do
+            # not capture this
+            key["keypoints"] = keypoints_filter_clipped_image(key, key["keypoints"])
+        elif method_name == "Bridging_smpl+head_30":
+            from pose_pipeline.wrappers.bridging import filter_skeleton
+            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image
+
+            key["keypoints"] = (BottomUpBridgingPerson & key).fetch1("keypoints")
+            key["keypoints"] = np.array(filter_skeleton(key["keypoints"], "smpl+head_30"))
             # Filter out keypoints that are outside of the image since confidence estimates do
             # not capture this
             key["keypoints"] = keypoints_filter_clipped_image(key, key["keypoints"])
@@ -1214,6 +1224,7 @@ class LiftingMethodLookup(dj.Lookup):
         {"lifting_method": 2, "lifting_method_name": "PoseAug"},
         {"lifting_method": 11, "lifting_method_name": "Bridging_COCO_25"},
         {"lifting_method": 12, "lifting_method_name": "Bridging_bml_movi_87"},
+        {"lifting_method": 13, "lifting_method_name": "Bridging_smpl+head_30"},
     ]
 
 
@@ -1274,6 +1285,16 @@ class LiftingPerson(dj.Computed):
 
             keypoints3d = (BottomUpBridgingPerson & key).fetch1("keypoints3d")
             keypoints3d = np.array(filter_skeleton(keypoints3d, "bml_movi_87"))
+            # Filter out keypoints that are outside of the image since confidence estimates do
+            # not capture this
+            keypoints3d = keypoints_filter_clipped_image(key, keypoints3d)
+            results = {"keypoints_3d": keypoints3d[:, :, :3], "keypoints_valid": keypoints3d[:, :, -1] > 0.5}
+        elif (LiftingMethodLookup & key).fetch1("lifting_method_name") == "Bridging_smpl+head_30":
+            from pose_pipeline.wrappers.bridging import filter_skeleton
+            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image
+
+            keypoints3d = (BottomUpBridgingPerson & key).fetch1("keypoints3d")
+            keypoints3d = np.array(filter_skeleton(keypoints3d, "smpl+head_30"))
             # Filter out keypoints that are outside of the image since confidence estimates do
             # not capture this
             keypoints3d = keypoints_filter_clipped_image(key, keypoints3d)
