@@ -1,6 +1,9 @@
 datajoint
 opencv-python
 
+ipywidgets
+ipympl
+
 # matplotlib
 # numpy
 # tensorflow

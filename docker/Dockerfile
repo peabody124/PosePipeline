@@ -46,6 +46,10 @@ RUN pip3 install -e /PosePipe
 COPY datajoint_config.json /root/.datajoint_config.json
 COPY scripts/*.py /PosePipe/
 
+# Creating directory for pose projects
+WORKDIR /
+RUN mkdir -p /projects/pose/
+
 # CMD ["python"]
 # ENTRYPOINT ["/bin/bash"]
 # ENTRYPOINT ["/usr/bin/python3"]

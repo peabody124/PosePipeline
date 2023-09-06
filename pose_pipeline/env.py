@@ -61,7 +61,8 @@ def set_environmental_variables(pose_project_dir=None):
         "HYBRIDIK_PATH": f"{pose_project_dir}HybrIK",
     }
     for var, path in env_paths.items():
-        assert Path(path).exists(), f"Could not find path {path}"
+        if not Path(path).exists():
+            print(f"Could not find path {path}")
         os.environ[var] = path
 
     import platform
