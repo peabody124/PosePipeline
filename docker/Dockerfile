@@ -7,33 +7,23 @@ RUN apt-get update && \
     libgoogle-glog-dev libboost-all-dev libhdf5-dev libatlas-base-dev \
     python3-setuptools vim libgtk2.0-dev libgtk-3-dev build-essential cmake mysql-client
 
-####### If using OpenPose need these next sections
+# Install openmmlab packages
 
-# get openpose
-WORKDIR /openpose
-RUN git clone https://github.com/CMU-Perceptual-Computing-Lab/openpose.git .
+WORKDIR /openmmlab
 
-# build it
-WORKDIR /openpose/build
-RUN cmake -DBUILD_PYTHON=ON -DUSE_CUDNN=ON  .. && make -j `nproc`
-WORKDIR /openpose
+# Install mim (mim is the package manager for openmmlab)
+RUN pip3 install -U openmim
 
-# install Openpose python. note the python version should match the base image
-WORKDIR /openpose/build/python/openpose
-RUN make install
-RUN ls -l /openpose/build/python/openpose
-RUN cp ./pyopenpose.cpython-310-x86_64-linux-gnu.so /usr/local/lib/python3.10/dist-packages
-WORKDIR /usr/local/lib/python3.8/dist-packages
-RUN ln -s pyopenpose.cpython-310m-x86_64-linux-gnu.so pyopenpose
-ENV LD_LIBRARY_PATH="/usr/local/lib/python3.10/dist-packages:${LD_LIBRARY_PATH}"
+# First install pytorch
+RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
-# download models
-WORKDIR /openpose/models
-RUN sh getModels.sh
+RUN mim install mmengine
 
-# no path needed since installed in the LD_LIBRARY_PATH
-ARG OPENPOSE_PATH=""
-RUN mv /openpose/models /usr/local/lib/python3.10/dist-packages/../../../models/
+# install mmcv
+RUN mim install mmcv
+
+# install mmdetection
+RUN mim install mmdet
 
 # ####### Now set up PosePipe itself
 WORKDIR /PosePipe
@@ -45,10 +35,12 @@ RUN pip3 install -e /PosePipe
 
 COPY datajoint_config.json /root/.datajoint_config.json
 COPY scripts/*.py /PosePipe/
+COPY demo /PosePipe/demo_det/
 
 # Creating directory for pose projects
 WORKDIR /
 RUN mkdir -p /projects/pose/
+RUN mkdir -p /videos
 
 # CMD ["python"]
 # ENTRYPOINT ["/bin/bash"]

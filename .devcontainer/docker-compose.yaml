@@ -12,6 +12,7 @@ services:
     volumes:
       - ..:/workspace
       - '/datajoint_external:/datajoint_external'
+      - ../../../test_video:/videos
 
   # This service starts the datajoint database image
   db:
