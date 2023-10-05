@@ -994,6 +994,7 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 11, "top_down_method_name": "Bridging_COCO_25"},
         {"top_down_method": 12, "top_down_method_name": "Bridging_bml_movi_87"},
         {"top_down_method": 13, "top_down_method_name": "Bridging_smpl+head_30"},
+        {"top_down_method": 14, "top_down_method_name": "Bridging_smplx_42"},
     ]
 
 
@@ -1076,6 +1077,15 @@ class TopDownPerson(dj.Computed):
 
             key["keypoints"] = (BottomUpBridgingPerson & key).fetch1("keypoints")
             key["keypoints"] = np.array(filter_skeleton(key["keypoints"], "smpl+head_30"))
+            # Filter out keypoints that are outside of the image since confidence estimates do
+            # not capture this
+            key["keypoints"] = keypoints_filter_clipped_image(key, key["keypoints"])
+        elif method_name == "Bridging_smplx_42":
+            from pose_pipeline.wrappers.bridging import filter_skeleton
+            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image
+
+            key["keypoints"] = (BottomUpBridgingPerson & key).fetch1("keypoints")
+            key["keypoints"] = np.array(filter_skeleton(key["keypoints"], "smplx_42"))
             # Filter out keypoints that are outside of the image since confidence estimates do
             # not capture this
             key["keypoints"] = keypoints_filter_clipped_image(key, key["keypoints"])
@@ -1225,6 +1235,7 @@ class LiftingMethodLookup(dj.Lookup):
         {"lifting_method": 11, "lifting_method_name": "Bridging_COCO_25"},
         {"lifting_method": 12, "lifting_method_name": "Bridging_bml_movi_87"},
         {"lifting_method": 13, "lifting_method_name": "Bridging_smpl+head_30"},
+        {"lifting_method": 14, "lifting_method_name": "Bridging_smplx_42"},
     ]
 
 
@@ -1281,24 +1292,123 @@ class LiftingPerson(dj.Computed):
             results = {"keypoints_3d": keypoints3d[:, :, :3], "keypoints_valid": keypoints3d[:, :, -1] > 0.5}
         elif (LiftingMethodLookup & key).fetch1("lifting_method_name") == "Bridging_bml_movi_87":
             from pose_pipeline.wrappers.bridging import filter_skeleton
-            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image
+            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image,keypoints_filter_clipped_image3d
+            from pose_pipeline.utils.keypoint_matching import compute_iou
+            from pose_pipeline.wrappers.bridging import noise_to_conf
+            bml_inds = np.array([264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276,
+            277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289,
+            290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 302,
+            303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315,
+            316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328,
+            329, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341,
+            342, 343, 344, 345, 346, 347, 348, 349, 350])
+
+            # get confidences from the right person. this is a bit of a repeat of BottomUpBridgingPerson
+            bbox, present = (PersonBbox & key).fetch1("bbox", "present")
+            boxes, keypoints2d, keypoints3d, keypoint_noise = (BottomUpBridging & key).fetch1(
+            "boxes", "keypoints2d", "keypoints3d", "keypoint_noise"
+            )
+            def match_bbox(bbox1, bbox2, thresh=0.25):
+                iou = compute_iou(bbox1[:, :4], bbox2[None, ...])
+                idx = np.argmax(iou)
+                if iou[idx] > thresh:
+                    return idx
+                return None
+
+            idx = [match_bbox(b1, b2) if b1.shape[0] > 0 else None for b1, b2 in zip(boxes, bbox)]
+
+            boxes = np.array([b[i] if i is not None else np.zeros((5,)) for b, i in zip(boxes, idx)])
+
+            keypoint_noise = np.array([k[i] if i is not None else np.zeros((580,)) for k, i in zip(keypoint_noise, idx)])
+            conf = noise_to_conf(keypoint_noise[:,bml_inds],half_val = 30, sharpness = 10)
+
 
             keypoints3d = (BottomUpBridgingPerson & key).fetch1("keypoints3d")
             keypoints3d = np.array(filter_skeleton(keypoints3d, "bml_movi_87"))
+            keypoints3d[:,:, -1] = conf
+            keypoints2d = (BottomUpBridgingPerson & key).fetch1("keypoints")
+            keypoints2d = np.array(filter_skeleton(keypoints2d, "bml_movi_87"))
             # Filter out keypoints that are outside of the image since confidence estimates do
             # not capture this
-            keypoints3d = keypoints_filter_clipped_image(key, keypoints3d)
-            results = {"keypoints_3d": keypoints3d[:, :, :3], "keypoints_valid": keypoints3d[:, :, -1] > 0.5}
+            keypoints3d = keypoints_filter_clipped_image3d(key, keypoints2d, keypoints3d)
+            results = {"keypoints_3d": keypoints3d[:, :, :], "keypoints_valid": keypoints3d[:, :, -1] > 0.5} # i am giving myself the keypoint noise here too
         elif (LiftingMethodLookup & key).fetch1("lifting_method_name") == "Bridging_smpl+head_30":
             from pose_pipeline.wrappers.bridging import filter_skeleton
-            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image
+            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image,keypoints_filter_clipped_image3d
+            from pose_pipeline.utils.keypoint_matching import compute_iou
+            from pose_pipeline.wrappers.bridging import noise_to_conf
+
+            # get confidences from the right person. this is a bit of a repeat of BottomUpBridgingPerson
+            bbox, present = (PersonBbox & key).fetch1("bbox", "present")
+            boxes, keypoints2d, keypoints3d, keypoint_noise = (BottomUpBridging & key).fetch1(
+                "boxes", "keypoints2d", "keypoints3d", "keypoint_noise"
+            )
+
+            def match_bbox(bbox1, bbox2, thresh=0.25):
+                iou = compute_iou(bbox1[:, :4], bbox2[None, ...])
+                idx = np.argmax(iou)
+                if iou[idx] > thresh:
+                    return idx
+                return None
+
+            idx = [match_bbox(b1, b2) if b1.shape[0] > 0 else None for b1, b2 in zip(boxes, bbox)]
+
+            boxes = np.array([b[i] if i is not None else np.zeros((5,)) for b, i in zip(boxes, idx)])
+
+            keypoint_noise = np.array([k[i] if i is not None else np.zeros((580,)) for k, i in zip(keypoint_noise, idx)])
+            smpl_inds = np.array([ 23,   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,  10,  11,12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  76,  89,90,  91,  92, 105])
+            conf = noise_to_conf(keypoint_noise[:,smpl_inds],half_val = 30, sharpness = 10)
+            
 
             keypoints3d = (BottomUpBridgingPerson & key).fetch1("keypoints3d")
             keypoints3d = np.array(filter_skeleton(keypoints3d, "smpl+head_30"))
+            keypoints3d[:,:, -1] = conf
+            keypoints2d = (BottomUpBridgingPerson & key).fetch1("keypoints")
+            keypoints2d = np.array(filter_skeleton(keypoints2d, "smpl+head_30"))
             # Filter out keypoints that are outside of the image since confidence estimates do
             # not capture this
-            keypoints3d = keypoints_filter_clipped_image(key, keypoints3d)
-            results = {"keypoints_3d": keypoints3d[:, :, :3], "keypoints_valid": keypoints3d[:, :, -1] > 0.5}
+            keypoints3d = keypoints_filter_clipped_image3d(key, keypoints2d, keypoints3d)
+            results = {"keypoints_3d": keypoints3d[:, :, :], "keypoints_valid": keypoints3d[:, :, -1] > 0.5} # i am giving myself the keypoint noise here too
+        elif (LiftingMethodLookup & key).fetch1("lifting_method_name") == "Bridging_smplx_42":
+            from pose_pipeline.wrappers.bridging import filter_skeleton
+            from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image,keypoints_filter_clipped_image3d
+            from pose_pipeline.utils.keypoint_matching import compute_iou
+            from pose_pipeline.wrappers.bridging import noise_to_conf
+
+            # get confidences from the right person. this is a bit of a repeat of BottomUpBridgingPerson
+            bbox, present = (PersonBbox & key).fetch1("bbox", "present")
+            boxes, keypoints2d, keypoints3d, keypoint_noise = (BottomUpBridging & key).fetch1(
+                "boxes", "keypoints2d", "keypoints3d", "keypoint_noise"
+            )
+
+            def match_bbox(bbox1, bbox2, thresh=0.25):
+                iou = compute_iou(bbox1[:, :4], bbox2[None, ...])
+                idx = np.argmax(iou)
+                if iou[idx] > thresh:
+                    return idx
+                return None
+
+            idx = [match_bbox(b1, b2) if b1.shape[0] > 0 else None for b1, b2 in zip(boxes, bbox)]
+
+            boxes = np.array([b[i] if i is not None else np.zeros((5,)) for b, i in zip(boxes, idx)])
+
+            keypoint_noise = np.array([k[i] if i is not None else np.zeros((580,)) for k, i in zip(keypoint_noise, idx)])
+            smpl_inds = np.array([179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191,
+                                  192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204,
+                                  205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217,
+                                  218, 219, 220])
+            conf = noise_to_conf(keypoint_noise[:,smpl_inds],half_val = 30, sharpness = 10)
+            
+
+            keypoints3d = (BottomUpBridgingPerson & key).fetch1("keypoints3d")
+            keypoints3d = np.array(filter_skeleton(keypoints3d, "smplx_42"))
+            keypoints3d[:,:, -1] = conf
+            keypoints2d = (BottomUpBridgingPerson & key).fetch1("keypoints")
+            keypoints2d = np.array(filter_skeleton(keypoints2d, "smplx_42"))
+            # Filter out keypoints that are outside of the image since confidence estimates do
+            # not capture this
+            keypoints3d = keypoints_filter_clipped_image3d(key, keypoints2d, keypoints3d)
+            results = {"keypoints_3d": keypoints3d[:, :, :], "keypoints_valid": keypoints3d[:, :, -1] > 0.5} # i am giving myself the keypoint noise here too
         else:
             raise Exception(f"Method not implemented {key}")
 
