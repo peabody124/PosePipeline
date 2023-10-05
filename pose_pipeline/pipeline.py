@@ -440,11 +440,10 @@ class BlurredVideo(dj.Computed):
     """
 
     def make(self, key):
-
         from pose_pipeline.utils.visualization import video_overlay
 
         video = Video.get_robust_reader(key, return_cap=False)
-        keypoints = (BottomUpPeople & key & 'bottom_up_method_name="OpenPose_HR"').fetch1("keypoints")
+        keypoints = (BottomUpPeople & key & 'bottom_up_method_name="Bridging_OpenPose"').fetch1("keypoints")
 
         def overlay_callback(image, idx):
             image = image.copy()
