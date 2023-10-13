@@ -18,6 +18,8 @@ RUN pip3 install -U openmim
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 RUN mim install mmengine
+RUN mim install mmpretrain
+RUN pip3 install motmetrics
 
 # install mmcv
 RUN mim install mmcv
