@@ -2,7 +2,7 @@
   "name": "PosePipe Dev Container",
   "dockerComposeFile": ["docker-compose.yaml"],
   "service": "posepipe", 
-  "workspaceFolder": "/workspace",
+  "workspaceFolder": "/PosePipe",
   "forwardPorts": [3306],
   "postCreateCommand": "pip install ipykernel",
   "customizations": {

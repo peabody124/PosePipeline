@@ -6,11 +6,17 @@ services:
       context: ..
       dockerfile: ./docker/Dockerfile
     image: posepipe_dev
-    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
     env_file:
       - ../.env
     volumes:
-      - ..:/workspace
+      - ..:/PosePipe
       - '/datajoint_external:/datajoint_external'
       - ../../../test_video:/videos
 
