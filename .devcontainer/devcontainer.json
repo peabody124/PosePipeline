@@ -1,0 +1,21 @@
+{
+  "name": "PosePipe Dev Container",
+  "dockerComposeFile": ["docker-compose.yaml"],
+  "service": "posepipe", 
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [3306],
+  "postCreateCommand": "pip install ipykernel",
+  "customizations": {
+
+    "settings": {
+			"python.pythonPath": "/usr/local/bin/python"
+		},
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-toolsai.jupyter"
+			]
+		}
+
+  }
+}

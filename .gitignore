@@ -33,3 +33,6 @@ MANIFEST
 # Notes/Config 
 temp*
 dj_local_con*.json
+
+# exclude env file
+.env
