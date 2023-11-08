@@ -7,6 +7,12 @@ RUN apt-get update && \
     libgoogle-glog-dev libboost-all-dev libhdf5-dev libatlas-base-dev \
     python3-setuptools vim libgtk2.0-dev libgtk-3-dev build-essential cmake mysql-client
 
+# Downgrade pip to ~=19.0
+RUN pip3 install pip~=19.0
+
+# First install pytorch
+RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
 # Install openmmlab packages
 
 WORKDIR /openmmlab
@@ -14,18 +20,17 @@ WORKDIR /openmmlab
 # Install mim (mim is the package manager for openmmlab)
 RUN pip3 install -U openmim
 
-# First install pytorch
-RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
 RUN mim install mmengine
-RUN mim install mmpretrain
-RUN pip3 install motmetrics
 
 # install mmcv
 RUN mim install mmcv
 
 # install mmdetection
 RUN mim install mmdet
+
+# RUN mim install mmpretrain
+RUN pip3 install motmetrics
+
 
 # ####### Now set up PosePipe itself
 WORKDIR /PosePipe
