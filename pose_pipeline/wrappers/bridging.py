@@ -39,9 +39,9 @@ def make_coco_25(model):
 def get_model():
     # doing this here to only load model once, since this takes quite a while
     if get_model.model is None:
-        model_path = os.path.join(MODEL_DATA_DIR, "bridging_formats")
-        model = hub.load(model_path)
-        # get_model.model = hub.load('https://bit.ly/metrabs_l')  # Takes about 3 minutes
+        # model_path = os.path.join(MODEL_DATA_DIR, "bridging_formats")
+        # model = hub.load(model_path)
+        model = hub.load('https://bit.ly/metrabs_l')  # Takes about 3 minutes
 
         model.per_skeleton_joint_names = {k: v.numpy() for k, v in model.per_skeleton_joint_names.items()}
         model.per_skeleton_indices = {k: v.numpy() for k, v in model.per_skeleton_indices.items()}
@@ -107,7 +107,6 @@ def bridging_formats_bottom_up(key, model=None, skeleton=""):
     if model is None:
         model = get_model()
 
-    from mmpose.apis import init_pose_model, inference_bottom_up_pose_model
     from tqdm import tqdm
 
     video = Video.get_robust_reader(key, return_cap=False)
