@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 #get deps
 RUN apt-get update && \
@@ -6,9 +6,6 @@ RUN apt-get update && \
     python3-dev python3-pip git g++ wget make libprotobuf-dev protobuf-compiler libopencv-dev \
     libgoogle-glog-dev libboost-all-dev libhdf5-dev libatlas-base-dev \
     python3-setuptools vim libgtk2.0-dev libgtk-3-dev build-essential cmake mysql-client
-
-# Downgrade pip to ~=19.0
-RUN pip3 install pip~=19.0
 
 # First install pytorch
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
@@ -28,7 +25,10 @@ RUN mim install mmcv
 # install mmdetection
 RUN mim install mmdet
 
-# RUN mim install mmpretrain
+# Install mmpretrain from source
+RUN git clone https://github.com/open-mmlab/mmpretrain.git
+RUN pip3 install -e /openmmlab/mmpretrain
+
 RUN pip3 install motmetrics
 
 
