@@ -33,6 +33,26 @@ def mmdet_bounding_boxes(file_path, method="deepsort"):
 
         # register all modules from mmdet
         register_all_modules()
+
+    elif method == "qdtrack":
+
+        # Define the model config id and checkpoints
+        qdtrack_config_id = "qdtrack_faster-rcnn_r50_fpn_8xb2-4e_mot17halftrain_test-mot17halfval"
+        qdtrack_checkpoint_name = "qdtrack_faster-rcnn_r50_fpn_4e_mot17_20220315_145635-76f295ef.pth"
+
+        # define the destination folder
+        destination = os.path.join(MODEL_DATA_DIR, f"mmdetection/{method}/")
+
+        # download the model and checkpoints
+        download(package, [qdtrack_config_id], dest_root=destination)
+
+        # define the model config and checkpoints paths
+        model_config = os.path.join(destination, f"{qdtrack_config_id}.py")
+        detector_checkpoint = os.path.join(destination, qdtrack_checkpoint_name)
+        reid_checkpoint = None
+
+        # register all modules from mmdet
+        register_all_modules()
     else:
         raise Exception(f"Unknown config file for MMDetection method {method}")
     
