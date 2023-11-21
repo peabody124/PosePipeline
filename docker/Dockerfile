@@ -5,7 +5,8 @@ RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     python3-dev python3-pip git g++ wget make libprotobuf-dev protobuf-compiler libopencv-dev \
     libgoogle-glog-dev libboost-all-dev libhdf5-dev libatlas-base-dev \
-    python3-setuptools vim libgtk2.0-dev libgtk-3-dev build-essential cmake mysql-client
+    python3-setuptools vim libgtk2.0-dev libgtk-3-dev build-essential cmake mysql-client \
+    ffmpeg
 
 # First install pytorch
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
@@ -39,6 +40,9 @@ RUN pip3 install -r requirements.txt
 COPY setup.py README.md /PosePipe/
 COPY pose_pipeline /PosePipe/pose_pipeline
 RUN pip3 install -e /PosePipe
+
+RUN pip3 install tensorflow[and-cuda]
+RUN pip3 install --upgrade tensorflow-hub
 
 COPY datajoint_config.json /root/.datajoint_config.json
 COPY scripts/*.py /PosePipe/
