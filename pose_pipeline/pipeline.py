@@ -434,7 +434,6 @@ class OpenPoseVideo(dj.Computed):
 class BlurredVideo(dj.Computed):
     definition = """
     -> Video
-    -> OpenPose
     ---
     output_video      : attach@localattach    # datajoint managed video file
     """
