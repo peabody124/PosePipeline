@@ -23,6 +23,7 @@ schema = dj.schema(db_prefix + "pose_pipeline")
 @schema
 class Video(dj.Manual):
     definition = """
+    # Table containing raw videos, grouped by project and filename, with their start time
     video_project       : varchar(50)
     filename            : varchar(100)
     ---
@@ -89,6 +90,7 @@ class Video(dj.Manual):
 @schema
 class VideoInfo(dj.Computed):
     definition = """
+    # Video info including timestamps, delta times, num frames, height and width
     -> Video
     ---
     timestamps      : longblob
