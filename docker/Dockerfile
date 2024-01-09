@@ -30,6 +30,8 @@ RUN mim install mmdet
 RUN git clone https://github.com/open-mmlab/mmpretrain.git
 RUN pip3 install -e /openmmlab/mmpretrain
 
+RUN mim install mmpose
+
 RUN pip3 install motmetrics
 
 

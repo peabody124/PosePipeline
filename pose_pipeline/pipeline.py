@@ -491,7 +491,6 @@ class TrackingBboxMethodLookup(dj.Lookup):
         {"tracking_method": 7, "tracking_method_name": "MMTrack_qdtrack"},
         {"tracking_method": 8, "tracking_method_name": "MMDet_deepsort"},
         {"tracking_method": 9, "tracking_method_name": "MMDet_qdtrack"},
-
     ]
 
 
@@ -1008,6 +1007,7 @@ class TopDownMethodLookup(dj.Lookup):
         {"top_down_method": 12, "top_down_method_name": "Bridging_bml_movi_87"},
         {"top_down_method": 13, "top_down_method_name": "Bridging_smpl+head_30"},
         {"top_down_method": 14, "top_down_method_name": "Bridging_smplx_42"},
+        {"top_down_method": 15, "top_down_method_name": "MMPose_RTMPose_Coco_Wholebody"},
     ]
 
 
@@ -1093,6 +1093,9 @@ class TopDownPerson(dj.Computed):
             # Filter out keypoints that are outside of the image since confidence estimates do
             # not capture this
             key["keypoints"] = keypoints_filter_clipped_image(key, key["keypoints"])
+        elif method_name == "MMPose_RTMPose_Coco_Wholebody":
+            from .wrappers.mmpose import mmpose_top_down_person
+            key["keypoints"] = mmpose_top_down_person(key, "RTMPose_coco-wholebody")
         elif method_name == "Bridging_smplx_42":
             from pose_pipeline.wrappers.bridging import filter_skeleton
             from pose_pipeline.utils.keypoints import keypoints_filter_clipped_image

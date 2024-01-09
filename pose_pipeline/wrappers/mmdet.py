@@ -16,7 +16,7 @@ def mmdet_bounding_boxes(file_path, method="deepsort"):
     if method == "deepsort":
         
         # Define the model config id and checkpoints
-        deepsort_config_id = "deepsort_faster-rcnn_r50_fpn_8xb2-4e_mot17halftrain_test-mot17halfval"
+        config_id = "deepsort_faster-rcnn_r50_fpn_8xb2-4e_mot17halftrain_test-mot17halfval"
         detector_checkpoint_name = "faster-rcnn_r50_fpn_4e_mot17-half-64ee2ed4.pth"
         reid_checkpoint_name = "tracktor_reid_r50_iter25245-a452f51f.pth"
 
@@ -24,10 +24,10 @@ def mmdet_bounding_boxes(file_path, method="deepsort"):
         destination = os.path.join(MODEL_DATA_DIR, f"mmdetection/{method}/")
 
         # download the model and checkpoints
-        download(package, [deepsort_config_id], dest_root=destination)
+        download(package, [config_id], dest_root=destination)
 
         # define the model config and checkpoints paths
-        model_config = os.path.join(destination, f"{deepsort_config_id}.py")
+        model_config = os.path.join(destination, f"{config_id}.py")
         detector_checkpoint = os.path.join(destination, detector_checkpoint_name)
         reid_checkpoint = os.path.join(destination, reid_checkpoint_name)
 
@@ -37,26 +37,54 @@ def mmdet_bounding_boxes(file_path, method="deepsort"):
     elif method == "qdtrack":
 
         # Define the model config id and checkpoints
-        qdtrack_config_id = "qdtrack_faster-rcnn_r50_fpn_8xb2-4e_mot17halftrain_test-mot17halfval"
-        qdtrack_checkpoint_name = "qdtrack_faster-rcnn_r50_fpn_4e_mot17_20220315_145635-76f295ef.pth"
+        config_id = "qdtrack_faster-rcnn_r50_fpn_8xb2-4e_mot17halftrain_test-mot17halfval"
+        detector_checkpoint_name = "qdtrack_faster-rcnn_r50_fpn_4e_mot17_20220315_145635-76f295ef.pth"
 
         # define the destination folder
         destination = os.path.join(MODEL_DATA_DIR, f"mmdetection/{method}/")
 
         # download the model and checkpoints
-        download(package, [qdtrack_config_id], dest_root=destination)
+        download(package, [config_id], dest_root=destination)
 
         # define the model config and checkpoints paths
-        model_config = os.path.join(destination, f"{qdtrack_config_id}.py")
-        detector_checkpoint = os.path.join(destination, qdtrack_checkpoint_name)
+        model_config = os.path.join(destination, f"{config_id}.py")
+        detector_checkpoint = os.path.join(destination, detector_checkpoint_name)
         reid_checkpoint = None
 
         # register all modules from mmdet
         register_all_modules()
+
+    # elif method == "rtmdet_hand":
+
+    #     from mmdet.apis import inference_detector, init_detector
+    #     from mmpose.utils import adapt_mmdet_pipeline
+
+    #     # Define the model config id and checkpoints
+    #     config_id = "rtmdet_nano_320-8xb32_hand"
+    #     detector_checkpoint_name = "rtmdet_nano_8xb32-300e_hand-267f9c8f.pth"
+
+    #     # define the destination folder
+    #     destination = os.path.join(MODEL_DATA_DIR, f"mmdetection/{method}/")
+
+    #     # # download the model and checkpoints
+    #     # download(package, [config_id], dest_root=destination)
+
+    #     # define the model config and checkpoints paths
+    #     model_config = os.path.join(destination, f"{config_id}.py")
+    #     detector_checkpoint = os.path.join(destination, detector_checkpoint_name)
+    #     reid_checkpoint = None
+
+    #     # register all modules from mmdet
+    #     register_all_modules()
+
     else:
         raise Exception(f"Unknown config file for MMDetection method {method}")
     
     # initialize the model
+    # if method == "rtmdet_hand":
+    #     model = mmdet.apis.init_detector(config=model_config, checkpoint=detector_checkpoint, device="cpu")
+    #     model.cfg = adapt_mmdet_pipeline(model.cfg)
+    # else:
     model = mmdet.apis.init_track_model(config=model_config, detector=detector_checkpoint, reid=reid_checkpoint, device="cpu")
 
     cap = cv2.VideoCapture(file_path)
@@ -72,6 +100,16 @@ def mmdet_bounding_boxes(file_path, method="deepsort"):
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
+        # if method == "rtmdet_hand":
+        #     result = mmdet.apis.inference_detector(model=model, imgs=frame)
+
+        #     bboxes = result.pred_instances.bboxes.numpy()
+        #     track_ids = result.pred_instances.labels
+        #     confidences = result.pred_instances.scores
+
+        #     # print(bboxes, track_ids, confidences)
+
+        # else:
         result = mmdet.apis.inference_mot(model=model, img=frame, frame_id=frame_id, video_len=video_length)
 
         # MMDet uses a custom data structure to store the results
