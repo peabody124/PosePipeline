@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "pose_pipeline"
+version = "0.1.0"
+description = "Video pose analysis pipelines for DataJoint."
+authors = ["James Cotton <peabody124@gmail.com>"]
+keywords = ["human pose estimation", "datajoint"]
+
+[tool.poetry.dependencies]
+python = "^3.6"
+datajoint = "*"
+opencv-python = "*"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
