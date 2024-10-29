@@ -99,7 +99,7 @@ def augmentation_noise(poses3d):
 
 def noise_to_conf(x, half_val=200, sharpness=50):
     x = -(x - half_val) / sharpness
-    return 1 / (1 + tf.math.exp(-x))
+    return 1 / (1 + np.exp(-x))
 
 
 def bridging_formats_bottom_up(key, model=None, skeleton=""):
