@@ -229,7 +229,7 @@ class BottomUpPeople(dj.Computed):
                     continue
                 
                 # concatenate noise to final dimension
-                noise = noise_to_conf(noise).numpy()
+                noise = noise_to_conf(noise)
                 kp = np.concatenate([kp, noise[:, :, None]], axis=-1)
                 
                 # filter and reorder to match OpenPose order, for compatibility downstream
