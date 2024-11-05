@@ -1,0 +1,38 @@
+[project]
+name = "pose_pipeline"
+version = "0.1.0"
+description = "Video pose analysis pipelines for DataJoint."
+readme = "README.md"
+requires-python = "~=3.11"
+dependencies = [
+    "datajoint>=0.14.2",
+    "opencv-python==4.9.0.80",
+    "torch >= 2.4.1",
+    "opencv-contrib-python==4.9.0.80",
+    "matplotlib>=3.9.2",
+    "numpy>1.24",
+    "pyrender>=0.1.45",
+    "tensorflow>=2.14.0",
+    "pycocotools==2.0.8",
+]
+
+[project.optional-dependencies]
+build = ["setuptools>70", "pip>22"]
+compile = ["chumpy>0.4"]
+
+[tool.uv]
+no-build-isolation-package = ["chumpy"]
+
+[[tool.uv.dependency-metadata]]
+name = "chumpy"
+version = "0.70"
+requires-dist = ["numpy>=1.8.1", "scipy>=0.13.0", "six>=1.11.0"]
+
+[[tool.uv.dependency-metadata]]
+name = "lap"
+version = "0.4.0"
+requires-dist = ["numpy>=1.10.1"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
