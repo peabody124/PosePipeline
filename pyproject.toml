@@ -7,7 +7,12 @@ requires-python = "~=3.11"
 dependencies = [
     "datajoint>=0.14.2",
     "opencv-python==4.9.0.80",
-    "torch >= 2.4.1",
+    "torch >= 2.4.0",
+    "torchvision >= 0.19.0",
+    "torchaudio >= 2.2.0",
+    "mmcv == 2.1.0",
+    "mmpose == 1.2.0",
+    "mmdet == 3.3.0",
     "opencv-contrib-python==4.9.0.80",
     "matplotlib>=3.9.2",
     "numpy>1.24",
@@ -36,3 +41,8 @@ requires-dist = ["numpy>=1.10.1"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
