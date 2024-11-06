@@ -17,10 +17,10 @@ def mmpose_hand_det(key, method='RTMDet'):
     from mmpose.evaluation.functional import nms
 
     video =  Video.get_robust_reader(key, return_cap=False) # returning video allows deleting it
-    path = os.path.dirname(os.path.abspath(__file__))
+    from pose_pipeline import MODEL_DATA_DIR
 
     if method == 'RTMDet':
-        detection_cfg = os.path.join(path,'../../3rdparty/mmpose/config/hand_2d_keypoint/rtmdet_nano_320-8xb32_hand.py')
+        detection_cfg = os.path.join(MODEL_DATA_DIR,'mmpose/config/hand_2d_keypoint/rtmdet_nano_320-8xb32_hand.py')
         detection_ckpt = 'https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmdet_nano_8xb32-300e_hand-267f9c8f.pth'
         device = 'cpu'
 
