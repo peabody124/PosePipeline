@@ -8,11 +8,7 @@ from pose_pipeline import Video
 def mmpose_hand_det(key, method='RTMDet'):
 
     from mmpose.apis import init_model
-    try:
-        from mmdet.apis import inference_detector, init_detector
-        has_mmdet =True
-    except (ImportError, ModuleNotFoundError):
-        has_mmdet = False 
+    from mmdet.apis import inference_detector, init_detector
     from mmpose.utils import adapt_mmdet_pipeline
     from mmpose.evaluation.functional import nms
 
@@ -23,6 +19,8 @@ def mmpose_hand_det(key, method='RTMDet'):
         detection_cfg = os.path.join(MODEL_DATA_DIR,'mmpose/config/hand_2d_keypoint/rtmdet_nano_320-8xb32_hand.py')
         detection_ckpt = 'https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmdet_nano_8xb32-300e_hand-267f9c8f.pth'
         device = 'cpu'
+    else:
+        raise ValueError(f"Method {method} not supported")
 
     # build detector
     detector = init_detector(detection_cfg, detection_ckpt, device=device)
