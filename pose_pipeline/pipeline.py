@@ -1976,8 +1976,6 @@ class TopDownPersonVideo(dj.Computed):
         ]
 
 
-
-
 @schema
 class HandBboxMethodLookup(dj.Lookup):
     definition = """
@@ -2034,13 +2032,70 @@ class HandPoseEstimationMethodLookup(dj.Lookup):
     """
     contents = [
         {"estimation_method": -1, "estimation_method_name": "Halpe"},
-        {"estimation_method": 0,  "estimation_method_name": "RTMPoseHand5"},
-        {"estimation_method": 1,  "estimation_method_name": "RTMPoseCOCO"},
-        {"estimation_method": 2,  "estimation_method_name": "freihand"},
-        {"estimation_method": 3,  "estimation_method_name": "HRNet_dark"},
-        {"estimation_method": 4,  "estimation_method_name": "HRNet_udp"},
-        
+        {"estimation_method": 0, "estimation_method_name": "RTMPoseHand5"},
+        {"estimation_method": 1, "estimation_method_name": "RTMPoseCOCO"},
+        {"estimation_method": 2, "estimation_method_name": "freihand"},
+        {"estimation_method": 3, "estimation_method_name": "HRNet_dark"},
+        {"estimation_method": 4, "estimation_method_name": "HRNet_udp"},
     ]
+
+    def joint_names(self):
+        method = self.fetch1("estimation_method_name")
+        if (
+            method == "RTMPoseHand5"
+            or method == "RTMPoseCOCO"
+            or method == "freihand"
+            or method == "HRNet_udp"
+            or method == "Halpe"
+        ):
+            return [
+                "Wrist",
+                "CMC1",
+                "MCP1",
+                "IP1",
+                "TIP1",
+                "MCP2",
+                "PIP2",
+                "DIP2",
+                "TIP2",
+                "MCP3",
+                "PIP3",
+                "DIP3",
+                "TIP3",
+                "MCP4",
+                "PIP4",
+                "DIP4",
+                "TIP4",
+                "MCP5",
+                "PIP5",
+                "DIP5",
+                "TIP5",
+            ]
+        elif method == "HRNet_dark":
+            return [
+                "Wrist",
+                "TIP1",
+                "IP1",
+                "MCP1",
+                "CMC1",
+                "TIP2",
+                "DIP2",
+                "PIP2",
+                "MCP2",
+                "TIP3",
+                "DIP3",
+                "PIP3",
+                "MCP3",
+                "TIP4",
+                "DIP4",
+                "PIP4",
+                "MCP4",
+                "TIP5",
+                "DIP5",
+                "PIP5",
+                "MCP5",
+            ]
+
 
 @schema
 class HandPoseEstimationMethod(dj.Manual):
@@ -2081,18 +2136,3 @@ class HandPoseEstimation(dj.Computed):
         
         
         self.insert1(key)
-
-    # @staticmethod
-    def joint_names(self, method=None):
-        if method is None:
-            method = (HandPoseEstimationMethodLookup & self).fetch1("estimation_method_name")
-        if method == "RTMPoseHand5" or method == "RTMPoseCOCO" or method == "freihand" or method=="HRNet_udp" or method=="Halpe":
-            return ['Wrist','CMC1','MCP1','IP1','TIP1','MCP2','PIP2',
-        'DIP2', 'TIP2', 'MCP3', 'PIP3', 'DIP3','TIP3', 'MCP4',
-        'PIP4', 'DIP4', 'TIP4', 'MCP5', 'PIP5','DIP5', 'TIP5'
-        ]
-        elif method == "HRNet_dark":
-            return ['Wrist','TIP1','IP1','MCP1','CMC1','TIP2','DIP2','PIP2','MCP2',
-                      'TIP3','DIP3','PIP3','MCP3','TIP4', 'DIP4',  'PIP4', 'MCP4',
-                      'TIP5','DIP5', 'PIP5','MCP5',
-            ]
