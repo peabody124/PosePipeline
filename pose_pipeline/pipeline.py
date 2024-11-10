@@ -2048,7 +2048,7 @@ class HandPoseEstimationMethodLookup(dj.Lookup):
             or method == "HRNet_udp"
             or method == "Halpe"
         ):
-            return [
+            names = [
                 "Wrist",
                 "CMC1",
                 "MCP1",
@@ -2071,6 +2071,7 @@ class HandPoseEstimationMethodLookup(dj.Lookup):
                 "DIP5",
                 "TIP5",
             ]
+            return [name.lower() + "_r" for name in names] + [name.lower() + "_l" for name in names]
         elif method == "HRNet_dark":
             return [
                 "Wrist",
