@@ -2016,7 +2016,10 @@ class HandBbox(dj.Computed):
         elif (HandBboxMethodLookup & key).fetch1("detection_method_name") == "TopDown":
             #Using TopDown table keypoints for HALPE to create right and left hand bboxes
             from pose_pipeline.wrappers.hand_bbox import make_bbox_from_keypoints
-            keypoints = (TopDownPerson & key & "top_down_method=2").fetch1("keypoints")
+            try:
+                keypoints = (TopDownPerson & key & "top_down_method=2").fetch1("keypoints")
+            except:
+                raise Exception("TopDownPerson table does not have the required keypoints")
             bboxes = make_bbox_from_keypoints(keypoints)
             key["bboxes"] = bboxes
             key["num_boxes"] = 2 
