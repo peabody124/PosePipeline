@@ -2017,9 +2017,11 @@ class HandBbox(dj.Computed):
             #Using TopDown table keypoints for HALPE to create right and left hand bboxes
             from pose_pipeline.wrappers.hand_bbox import make_bbox_from_keypoints
             keypoints = (TopDownPerson & key & "top_down_method=2").fetch1("keypoints")
-            num_boxes, bboxes = make_bbox_from_keypoints(keypoints)
+            bboxes = make_bbox_from_keypoints(keypoints)
             key["bboxes"] = bboxes
-            key["num_boxes"] = num_boxes
+            key["num_boxes"] = 2 
+        else:
+            raise Exception(f"Method not implemented")
 
         self.insert1(key)
 
@@ -2134,6 +2136,8 @@ class HandPoseEstimation(dj.Computed):
             from pose_pipeline.wrappers.hand_estimation import mmpose_HPE
             kp2d = (TopDownPerson & key & "top_down_method=2").fetch1("keypoints")
             key["keypoints_2d"] = np.concatenate((kp2d[:,-21:,:],kp2d[:,-42:-21,:]),axis=1)
+        else:
+            raise Exception(f"Method not implemented")
         
         
         self.insert1(key)

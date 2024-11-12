@@ -102,4 +102,4 @@ def make_bbox_from_keypoints(
 
         bboxes.append([right_hand_bboxes,left_hand_bboxes])
 
-    return 2, bboxes
+    return bboxes
