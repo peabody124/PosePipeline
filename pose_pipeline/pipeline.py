@@ -1974,3 +1974,173 @@ class TopDownPersonVideo(dj.Computed):
             "Right elbow",
             "Right wrist",
         ]
+
+
+@schema
+class HandBboxMethodLookup(dj.Lookup):
+    definition = """
+    detection_method      : int
+    ---
+    detection_method_name : varchar(50)
+    """
+    contents = [
+        {"detection_method": 0, "detection_method_name": "RTMDet"},
+        {"detection_method": 1, "detection_method_name": "TopDown"},
+        
+    ]
+
+@schema
+class HandBboxMethod(dj.Manual):
+    definition = """
+    -> Video
+    -> HandBboxMethodLookup
+    ---
+    """
+
+
+@schema
+class HandBbox(dj.Computed):
+    definition = """
+    -> HandBboxMethod
+    ---
+    num_boxes   :   int
+    bboxes      :   longblob
+    """   
+    def make(self,key):
+        if (HandBboxMethodLookup & key).fetch1("detection_method_name") == "RTMDet":
+            #Using RTMDet from MMpose API to create any available hand bboxes
+            from pose_pipeline.wrappers.hand_bbox import mmpose_hand_det
+            num_boxes, bboxes = mmpose_hand_det(key=key, method="RTMDet")
+            key["bboxes"] = bboxes
+            key["num_boxes"] = num_boxes
+        elif (HandBboxMethodLookup & key).fetch1("detection_method_name") == "TopDown":
+            #Using TopDown table keypoints for HALPE to create right and left hand bboxes
+            from pose_pipeline.wrappers.hand_bbox import make_bbox_from_keypoints
+            try:
+                keypoints = (TopDownPerson & key & "top_down_method=2").fetch1("keypoints")
+            except:
+                raise Exception("TopDownPerson table does not have the required keypoints")
+            bboxes = make_bbox_from_keypoints(keypoints)
+            key["bboxes"] = bboxes
+            key["num_boxes"] = 2 
+        else:
+            raise Exception(f"Method not implemented")
+
+        self.insert1(key)
+
+@schema
+class HandPoseEstimationMethodLookup(dj.Lookup):
+    definition = """
+    estimation_method      : int
+    ---
+    estimation_method_name : varchar(50)
+    """
+    contents = [
+        {"estimation_method": -1, "estimation_method_name": "Halpe"},
+        {"estimation_method": 0, "estimation_method_name": "RTMPoseHand5"},
+        {"estimation_method": 1, "estimation_method_name": "RTMPoseCOCO"},
+        {"estimation_method": 2, "estimation_method_name": "freihand"},
+        {"estimation_method": 3, "estimation_method_name": "HRNet_dark"},
+        {"estimation_method": 4, "estimation_method_name": "HRNet_udp"},
+    ]
+
+    def joint_names(self):
+        method = self.fetch1("estimation_method_name")
+        if (
+            method == "RTMPoseHand5"
+            or method == "RTMPoseCOCO"
+            or method == "freihand"
+            or method == "HRNet_udp"
+            or method == "Halpe"
+        ):
+            names = [
+                "Wrist",
+                "CMC1",
+                "MCP1",
+                "IP1",
+                "TIP1",
+                "MCP2",
+                "PIP2",
+                "DIP2",
+                "TIP2",
+                "MCP3",
+                "PIP3",
+                "DIP3",
+                "TIP3",
+                "MCP4",
+                "PIP4",
+                "DIP4",
+                "TIP4",
+                "MCP5",
+                "PIP5",
+                "DIP5",
+                "TIP5",
+            ]
+            return [name.lower() + "_r" for name in names] + [name.lower() + "_l" for name in names]
+        elif method == "HRNet_dark":
+            return [
+                "Wrist",
+                "TIP1",
+                "IP1",
+                "MCP1",
+                "CMC1",
+                "TIP2",
+                "DIP2",
+                "PIP2",
+                "MCP2",
+                "TIP3",
+                "DIP3",
+                "PIP3",
+                "MCP3",
+                "TIP4",
+                "DIP4",
+                "PIP4",
+                "MCP4",
+                "TIP5",
+                "DIP5",
+                "PIP5",
+                "MCP5",
+            ]
+
+
+@schema
+class HandPoseEstimationMethod(dj.Manual):
+    definition = """
+    -> HandBbox
+    -> HandPoseEstimationMethodLookup
+    ---
+    """
+
+
+@schema
+class HandPoseEstimation(dj.Computed):
+    definition = """
+    -> HandPoseEstimationMethod
+    ---
+    keypoints_2d       : longblob  #(time, [21 righthand-21 lefthand], 3)
+    """   
+    def make(self,key):
+        if (HandPoseEstimationMethodLookup & key).fetch1("estimation_method_name") == "RTMPoseHand5":
+            from pose_pipeline.wrappers.hand_estimation import mmpose_HPE
+            key["keypoints_2d"] = mmpose_HPE(key, 'RTMPoseHand5')
+        elif (HandPoseEstimationMethodLookup & key).fetch1("estimation_method_name") == "RTMPoseCOCO":
+            from pose_pipeline.wrappers.hand_estimation import mmpose_HPE
+            key["keypoints_2d"] = mmpose_HPE(key, 'RTMPoseCOCO')
+        elif (HandPoseEstimationMethodLookup & key).fetch1("estimation_method_name") == "freihand":
+            from pose_pipeline.wrappers.hand_estimation import mmpose_HPE
+            key["keypoints_2d"] = mmpose_HPE(key, 'freihand')
+        elif (HandPoseEstimationMethodLookup & key).fetch1("estimation_method_name") == "HRNet_dark":
+            from pose_pipeline.wrappers.hand_estimation import mmpose_HPE
+            key["keypoints_2d"] = mmpose_HPE(key, 'HRNet_dark')
+        elif (HandPoseEstimationMethodLookup & key).fetch1("estimation_method_name") == "HRNet_udp":
+            from pose_pipeline.wrappers.hand_estimation import mmpose_HPE
+            key["keypoints_2d"] = mmpose_HPE(key, 'HRNet_udp')
+        elif (HandPoseEstimationMethodLookup & key).fetch1("estimation_method_name") == "Halpe":
+            from pose_pipeline.wrappers.hand_estimation import mmpose_HPE
+            kp2d = (TopDownPerson & key & "top_down_method=2").fetch1("keypoints")
+            key["keypoints_2d"] = np.concatenate((kp2d[:,-21:,:],kp2d[:,-42:-21,:]),axis=1)
+        else:
+            raise Exception(f"Method not implemented")
+        
+        
+        self.insert1(key)
