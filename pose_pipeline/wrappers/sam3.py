@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 
-def sam3_bounding_boxes(file_path: str, chunk_size: int = 1300) -> list[list[dict]]:
+def sam3_bounding_boxes(file_path: str, chunk_size: int = 1300, prompt: str = "person") -> list[list[dict]]:
     """Run SAM3 person tracking and return per-frame bounding boxes.
 
     Processes video in chunks to bound GPU memory on long videos. Track IDs
@@ -30,7 +30,7 @@ def sam3_bounding_boxes(file_path: str, chunk_size: int = 1300) -> list[list[dic
     predictor = build_sam3_video_predictor(gpus_to_use=range(torch.cuda.device_count()))
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-            return _run_chunked(predictor, file_path, num_frames, fps, width, height, chunk_size, tmpdir)
+            return _run_chunked(predictor, file_path, num_frames, fps, width, height, chunk_size, tmpdir, prompt)
     finally:
         predictor.shutdown()
 
@@ -44,6 +44,7 @@ def _run_chunked(
     height: int,
     chunk_size: int,
     tmpdir: str,
+    prompt: str = "person",
 ) -> list[list[dict]]:
     """Process video in memory-bounded chunks with consistent track IDs across boundaries."""
     import cv2
@@ -69,7 +70,7 @@ def _run_chunked(
             writer.write(frame)
         writer.release()
 
-        raw_outputs = _run_video_session(predictor, chunk_path, "person")
+        raw_outputs = _run_video_session(predictor, chunk_path, prompt)
         chunk_tracks = _build_tracks(raw_outputs, actual_size)
 
         id_map, next_id = _match_and_allocate_ids(prev_last_tracks, chunk_tracks[0] if chunk_tracks else [], next_id)
